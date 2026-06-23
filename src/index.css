@@ -1,43 +1,53 @@
 @import "tailwindcss";
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
-:root {
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  color-scheme: light dark;
+@theme {
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-display: 'Outfit', sans-serif;
+  --color-medical-blue: #007BFF;
+  --color-medical-light: #E6F7FF;
+  --color-medical-dark: #0056b3;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Outfit', sans-serif;
+:root {
+  font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background-color: #0f172a; /* Slate 900 */
-  color: #f8fafc; /* Slate 50 */
+  background-color: #F8F9FA;
+  color: #1E293B;
   min-height: 100vh;
 }
 
-#root {
-  width: 100%;
-  min-height: 100vh;
-  margin: 0;
-  padding: 0;
+/* Hiệu ứng chuyển động mượt mà */
+.transition-all-300 {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Custom Scrollbar for modern dashboards */
+/* Bóng đổ mềm mại cao cấp */
+.shadow-premium {
+  box-shadow: 0 10px 30px -10px rgba(0, 123, 255, 0.08), 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.shadow-premium-hover {
+  box-shadow: 0 20px 40px -15px rgba(0, 123, 255, 0.15), 0 1px 5px rgba(0, 0, 0, 0.03);
+}
+
+/* Thanh cuộn phong cách tối giản */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: #F1F5F9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #475569;
-  border-radius: 4px;
+  background: #CBD5E1;
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #0ea5e9;
+  background: #007BFF;
 }
