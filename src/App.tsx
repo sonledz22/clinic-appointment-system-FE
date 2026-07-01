@@ -7,6 +7,9 @@ import { ROLES } from '@/constants/roles';
 import { getRoles } from '@/services/keycloak';
 
 const HomePage = lazy(() => import('@/features/home/pages/HomePage'));
+const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
+const RegisterPage = lazy(() => import('@/features/auth/pages/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
 const DoctorsPage = lazy(() => import('@/features/doctors/pages/DoctorsPage'));
 const HospitalsPage = lazy(() => import('@/features/hospitals/pages/HospitalsPage'));
 const ClinicsPage = lazy(() => import('@/features/clinics/pages/ClinicsPage'));
@@ -32,6 +35,10 @@ const App: React.FC = () => {
     <BrowserRouter>
       <Suspense fallback={<LoadingScreen />}>
         <Routes>
+          <Route path={APP_ROUTES.LOGIN} element={<LoginPage />} />
+          <Route path={APP_ROUTES.REGISTER} element={<RegisterPage />} />
+          <Route path={APP_ROUTES.FORGOT_PASSWORD} element={<ForgotPasswordPage />} />
+
           {/* Bệnh nhân (Vai trò 'user') */}
           <Route
             path={APP_ROUTES.HOME}

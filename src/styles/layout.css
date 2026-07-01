@@ -7,10 +7,9 @@
 }
 
 .app-main {
-  width: 100%;
-  max-width: 1240px;
+  width: min(1680px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 24px;
+  padding: 28px 0 36px;
   flex: 1;
 }
 
@@ -24,31 +23,30 @@
 }
 
 .app-header__inner {
-  width: 100%;
-  max-width: 1240px;
-  min-height: 68px;
+  width: min(1680px, calc(100% - 48px));
+  min-height: 58px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
 }
 
 .app-brand {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 10px;
+  gap: 8px;
   color: var(--app-secondary);
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .app-brand__mark {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--app-radius-md);
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -62,25 +60,26 @@
   min-width: 0;
   display: flex;
   justify-content: center;
+  padding: 0 12px;
 }
 
 .app-sidebar-nav {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
 }
 
 .app-sidebar-nav a {
-  min-height: 40px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 10px;
-  border-radius: var(--app-radius-sm);
+  gap: 8px;
+  padding: 0 15px;
+  border-radius: 999px;
   color: var(--app-muted);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
@@ -88,7 +87,7 @@
 
 .app-sidebar-nav a i {
   color: var(--app-primary);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .app-sidebar-nav a:hover,
@@ -99,21 +98,36 @@
 
 .app-sidebar-nav a.is-active {
   box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.16);
-  font-weight: 700;
 }
 
 .app-header__user {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 10px;
+  gap: 12px;
   margin-left: auto;
+}
+
+.app-header__identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-header__avatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDBA74 100%);
+  color: #7C2D12;
+  font-weight: 800;
 }
 
 .app-header__user-info {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 2px;
   min-width: 0;
   white-space: nowrap;
@@ -128,12 +142,57 @@
 
 .app-header__user-info strong,
 .app-mobile-sidebar__account strong {
-  max-width: 150px;
+  max-width: 230px;
   overflow: hidden;
   color: var(--app-text);
   font-size: 13px;
   font-weight: 700;
   text-overflow: ellipsis;
+}
+
+.app-header__login {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid #BFDBFE;
+  border-radius: 999px;
+  background: #FFFFFF;
+  color: var(--app-secondary);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.app-header__login i {
+  color: var(--app-primary);
+  font-size: 14px;
+}
+
+.app-header__login:hover,
+.app-header__login:focus-visible {
+  color: var(--app-primary-dark);
+  border-color: var(--app-primary);
+  background: #F0F9FF;
+  box-shadow: var(--focus-ring);
+}
+
+/* Legacy class kept for older page-level usages outside the main header. */
+.app-header__logout.p-button {
+  min-height: 38px;
+  color: var(--app-secondary);
+  border-color: #BFDBFE;
+  background: #FFFFFF;
+}
+
+.app-header__logout.p-button:enabled:hover {
+  color: var(--app-primary-dark);
+  border-color: var(--app-primary);
+  background: #F0F9FF;
 }
 
 .app-header__menu-button {
@@ -173,10 +232,9 @@
 }
 
 .app-footer__inner {
-  width: 100%;
-  max-width: 1240px;
+  width: min(1680px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 20px 24px;
+  padding: 20px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -523,7 +581,15 @@
   color: var(--app-danger);
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1399px) {
+  .app-main,
+  .app-header__inner,
+  .app-footer__inner {
+    width: min(1600px, calc(100% - 48px));
+  }
+}
+
+@media (max-width: 1100px) {
   .app-header__desktop-nav {
     display: none;
   }
@@ -538,6 +604,14 @@
 
   .booking-panel {
     position: static;
+  }
+}
+
+@media (max-width: 1023px) {
+  .app-main,
+  .app-header__inner,
+  .app-footer__inner {
+    width: calc(100% - 32px);
   }
 }
 
@@ -556,12 +630,11 @@
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 767px) {
   .app-main,
   .app-header__inner,
   .app-footer__inner {
-    padding-left: 16px;
-    padding-right: 16px;
+    width: calc(100% - 24px);
   }
 
   .app-main {
@@ -582,8 +655,7 @@
     height: 36px;
   }
 
-  .app-header__user-info,
-  .app-header__user .p-button:not(.app-header__menu-button) {
+  .app-header__identity {
     display: none;
   }
 

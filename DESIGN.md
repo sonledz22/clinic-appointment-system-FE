@@ -59,6 +59,422 @@ ui:
 
 Tài liệu này là nguồn tham chiếu chính thức cho UI của project `clinic-appointment-system-FE`. Project là hệ thống đặt lịch khám/phòng khám dùng Vite, React và TypeScript. Các thay đổi UI trong tương lai phải bám theo tài liệu này trước khi thêm style hoặc component mới.
 
+# Global UI Implementation Rules
+
+Section này áp dụng cho **toàn bộ project**, bao gồm HomePage, Login/Register, dashboard, form quản trị, danh sách bác sĩ, bệnh viện, gói khám, cẩm nang, modal, table, card và mọi component dùng chung. Mỗi lần Codex sửa UI, thêm page, sửa component hoặc refactor layout đều phải kiểm tra các rule bên dưới trước khi chỉnh code.
+
+Mục tiêu của các rule này là giữ UI đồng nhất và tránh lỗi phổ biến:
+
+- Input/button bị lệch hoặc không cùng chiều rộng.
+- PrimeReact component bị mất style, mất border, mất state hover/focus.
+- Card/grid bị vỡ, card quá nhỏ hoặc text bị ép xấu.
+- Text/icon bị rời rạc, không căn hàng hoặc không cùng hệ spacing.
+- Layout bị hẹp, overlap, dùng sai khoảng trắng trên desktop.
+- Mỗi page tự tạo một kiểu UI khác nhau, không theo design system.
+
+## 1. Nguyên tắc chung
+
+Toàn bộ UI của project phải tuân theo design system trong `DESIGN.md`.
+
+Khi sửa UI, luôn ưu tiên:
+
+- PrimeReact component.
+- PrimeIcons.
+- CSS class riêng theo component/page.
+- Layout bằng CSS Grid/Flex rõ ràng.
+- Responsive rõ breakpoint.
+- Design token đã định nghĩa trong tài liệu này.
+- Không sửa business logic, API endpoint, route nếu task chỉ yêu cầu UI.
+
+Không được sửa UI theo kiểu “vá tạm” bằng:
+
+- `margin` âm.
+- `position: absolute` không cần thiết.
+- `transform` để kéo layout vào vị trí đúng.
+- `z-index` để che lỗi layout.
+- `width`/`height` cố định vô lý.
+- CSS global quá mạnh làm hỏng PrimeReact.
+- Scale/zoom toàn page để làm layout trông vừa màn hình.
+- Ẩn overflow để che phần bị vỡ mà không sửa nguyên nhân.
+
+Nếu layout bị overlap, ưu tiên sửa bằng Grid/Flex, gap, min/max width, responsive breakpoint và cấu trúc DOM rõ ràng. Chỉ dùng `position: absolute` cho decoration, badge nhỏ, floating icon hoặc overlay có chủ đích, và phần tử absolute phải nằm trong wrapper `position: relative` có phạm vi rõ.
+
+## 2. Không phá PrimeReact component
+
+Project dùng PrimeReact làm UI library chính. Không được viết CSS global kiểu:
+
+```css
+input { ... }
+button { ... }
+select { ... }
+textarea { ... }
+.p-button { ... } quá mạnh
+.p-inputtext { ... } quá mạnh
+```
+
+Nếu cần tùy chỉnh PrimeReact, phải scope theo page/component:
+
+```css
+.login-form .p-inputtext { ... }
+.appointment-form .p-dropdown { ... }
+.home-hero__search .p-button { ... }
+.doctor-table .p-datatable { ... }
+```
+
+Khi style PrimeReact, phải kiểm tra đúng wrapper của component:
+
+- `Password` thường render wrapper `.p-password` và input bên trong `.p-inputtext`.
+- `Dropdown` có wrapper `.p-dropdown`, label `.p-dropdown-label`, trigger `.p-dropdown-trigger`.
+- `Calendar` có wrapper `.p-calendar`, input `.p-inputtext`, nút icon `.p-datepicker-trigger`.
+- `Button` có `.p-button`, `.p-button-label`, `.p-button-icon`.
+- `Checkbox` có `.p-checkbox`, `.p-checkbox-box`, input thật bên trong.
+- `DataTable` có nhiều layer wrapper; style phải scoped theo table cụ thể.
+
+Không được làm mất các state mặc định của PrimeReact:
+
+- Hover.
+- Focus ring.
+- Disabled.
+- Loading.
+- Invalid/error.
+- Checked/selected.
+- Expanded/collapsed.
+
+Khi custom style button/input, luôn giữ đủ:
+
+- Border hoặc background rõ ràng.
+- Height ổn định.
+- Text/icon nằm trong cùng control.
+- Focus state thấy được.
+- Disabled state không giống enabled.
+- Cursor đúng với trạng thái tương tác.
+
+## 3. Form, input, password, checkbox
+
+Form là khu vực dễ lệch nhất, nên mọi form phải dùng layout có cấu trúc rõ:
+
+- Form dùng `display: grid` hoặc `display: flex` theo cột.
+- Mỗi field nằm trong wrapper riêng, ví dụ `.login-form__field`.
+- Label luôn nằm trên input, không chỉ dùng placeholder.
+- Khoảng cách label-input: 6-8px.
+- Khoảng cách giữa các field: 16-20px.
+- Input cùng nhóm phải cùng width.
+- Password input phải cùng width với email/text input.
+- Không để icon làm input bị ngắn hơn field khác.
+
+Quy chuẩn kích thước input:
+
+- Desktop form thường: height 44-48px.
+- Form CTA lớn hoặc hero search: height 52-56px.
+- Border radius input: 8-10px.
+- Padding trái/phải phải tính cả icon.
+- Placeholder dùng text phụ, không quá đậm.
+- Nền input nên là trắng hoặc xanh rất nhạt; không dùng nền xanh quá đậm làm field giống selected state.
+
+Khi dùng icon trong input:
+
+- Icon nằm trong cùng wrapper với input.
+- Icon căn giữa theo chiều cao input.
+- Icon không được đè text.
+- Text input phải có padding đủ để không chạm icon.
+- Nếu dùng PrimeReact `IconField`/`InputIcon`, ưu tiên dùng đúng API của PrimeReact.
+
+Checkbox/radio phải hiển thị control thật:
+
+- Không chỉ để text “Ghi nhớ đăng nhập” mà thiếu ô checkbox.
+- Checkbox và label căn giữa theo trục ngang.
+- Khoảng cách checkbox-label: 8px.
+- Checked state phải rõ.
+- Click vào label nên toggle checkbox nếu có thể.
+
+## 4. Button và action
+
+Button trong project phải ưu tiên PrimeReact `Button`.
+
+Primary button:
+
+- Có background primary `#0EA5E9` hoặc token tương đương.
+- Text trắng.
+- Hover dùng `#0284C7`.
+- Icon nằm trong button, không rời ra ngoài.
+- Label và icon căn giữa.
+- Height thường 40-48px; CTA lớn có thể 48-52px.
+
+Secondary/outlined button:
+
+- Nền trắng.
+- Border `#E2E8F0`.
+- Text `#0F172A` hoặc primary nếu là link action.
+- Hover có nền nhẹ `#F8FAFC` hoặc `#F0F9FF`.
+
+Không được để button nhìn như text rời nếu đó là CTA chính. Nếu muốn dùng text action, phải dùng cho action phụ như “Quên mật khẩu?”, “Xem tất cả”, “Hủy”.
+
+Social button hoặc button phụ có icon phải có:
+
+- Border rõ.
+- Padding ngang đủ.
+- Icon và label cùng hàng.
+- Gap 8px.
+- Width đồng đều nếu nằm trong grid 2 cột.
+
+Icon-only button phải có `aria-label` hoặc tooltip, nhất là trong table/action row.
+
+## 5. Layout container toàn app
+
+Không để page desktop bị bó ở giữa bởi `max-width` quá nhỏ nếu task là landing/home/dashboard rộng.
+
+Container chính nên dùng quy tắc:
+
+```css
+.app-container,
+.page-container,
+.home-container,
+.layout-container,
+.header-container {
+  width: min(1680px, calc(100% - 48px));
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (max-width: 1024px) {
+  .app-container,
+  .page-container,
+  .home-container,
+  .layout-container,
+  .header-container {
+    width: calc(100% - 32px);
+  }
+}
+
+@media (max-width: 640px) {
+  .app-container,
+  .page-container,
+  .home-container,
+  .layout-container,
+  .header-container {
+    width: calc(100% - 24px);
+  }
+}
+```
+
+Nếu page là dashboard/table nhiều dữ liệu, có thể dùng container rộng hơn hoặc full-width có padding. Nếu page là form đơn giản như login modal, container có thể căn giữa nhưng không được ảnh hưởng header/footer hoặc các page khác.
+
+Luôn kiểm tra các class có thể bó layout:
+
+- `.app-container`
+- `.page-container`
+- `.home-container`
+- `.home-shell`
+- `.main-container`
+- `.content-wrapper`
+- `.layout-container`
+- `.header-container`
+- `.navbar-container`
+- `.hero-section`
+- `.hero-shell`
+
+Tránh giữ các giá trị quá hẹp nếu không có lý do:
+
+- `max-width: 1000px`
+- `max-width: 1100px`
+- `max-width: 1120px`
+- `max-width: 1180px`
+- `max-width: 1200px`
+- `width: 1000px`
+- `width: 1200px`
+
+## 6. Grid/Flex layout
+
+Khi layout có nhiều cột, phải dùng CSS Grid/Flex rõ ràng thay vì kéo bằng absolute.
+
+Grid nên dùng:
+
+- `minmax(0, 1fr)` để tránh content làm vỡ cột.
+- `gap` thay vì margin thủ công rải rác.
+- `align-items` và `justify-content` rõ ràng.
+- Breakpoint cụ thể cho desktop/tablet/mobile.
+
+Ví dụ layout 2 cột:
+
+```css
+.page-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(360px, 1fr);
+  gap: 32px;
+}
+```
+
+Ví dụ card grid:
+
+```css
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 20px;
+}
+```
+
+Không dùng width cố định nhỏ cho card nếu grid có thể tự co giãn. Nếu card cần min width, dùng `minmax()` và breakpoint thay vì `width: 180px`.
+
+## 7. Card, panel và section
+
+Card/panel phải thống nhất:
+
+- Nền trắng.
+- Border `#E2E8F0`.
+- Border radius 8-16px tùy loại.
+- Shadow nhẹ, không quá đậm.
+- Padding 16px cho card nhỏ, 20-24px cho panel chính.
+- Header card có title rõ và action phụ nếu cần.
+
+Không để card bị quá nhỏ trên desktop rộng. Với danh sách bác sĩ/bệnh viện/gói khám:
+
+- Desktop rộng ưu tiên 3-4 card mỗi hàng tùy nội dung.
+- Desktop thường 2-3 card.
+- Tablet 2 card.
+- Mobile 1 card.
+
+Text trong card:
+
+- Title không bị cắt quá sớm nếu còn đủ không gian.
+- Metadata dùng text phụ nhưng vẫn đọc được.
+- Icon và text cùng hàng phải căn giữa hoặc căn đầu dòng nhất quán.
+- Không để icon một nơi, label một nơi như hai phần tử rời.
+
+Không lồng card trong card nếu chỉ để tạo hiệu ứng. Chỉ lồng khi có ngữ nghĩa thật như list item trong panel.
+
+## 8. Hero và landing section
+
+Hero phải tận dụng chiều ngang container trên desktop và không overlap.
+
+Khi hero có nhiều vùng nội dung, tách cột rõ:
+
+- Cột content: badge, headline, description, search, tags.
+- Cột visual: ảnh/illustration/decoration/stat.
+- Cột action: booking form/card nếu có.
+
+Không để visual/stat tràn sang search hoặc booking card. Nếu dùng absolute decoration:
+
+- Wrapper phải `position: relative`.
+- Decoration không che text/input.
+- Không dùng `z-index` để che lỗi.
+- Không dùng margin âm hoặc transform để kéo stat card vào vị trí.
+
+Search trong hero:
+
+- Width 100% trong cột content.
+- Height ổn định 52-56px.
+- Button search nằm trong cùng thanh search.
+- Placeholder không bị truncate quá sớm.
+
+Stats trong hero:
+
+- Card đủ rộng, không ép label thành 3-4 dòng.
+- Number luôn một dòng.
+- Icon và text cùng layout ngang hoặc layout rõ.
+- Responsive phải chuyển grid/scroll hợp lý, không làm overflow toàn page.
+
+## 9. Header, navbar, footer
+
+Header phải dùng cùng container width với body content, trừ khi layout cố ý full-width.
+
+Desktop header:
+
+- Logo bên trái.
+- Menu chính ở giữa hoặc sau logo tùy thiết kế.
+- User/logout bên phải.
+- Không để menu chen chúc khi còn đủ màn hình.
+- User info không bị cắt quá sớm.
+
+Mobile/tablet:
+
+- Menu được collapse/wrap có kiểm soát.
+- Không overflow ngang.
+- Icon-only action phải có label/tooltip/aria-label nếu cần.
+
+Footer:
+
+- Dùng cùng container hoặc cùng rhythm với body.
+- Không được mất footer khi page là login/register nếu layout tổng thể có footer.
+- Spacing footer phải không đè nội dung chính.
+
+## 10. Responsive breakpoint
+
+Mỗi UI lớn phải có breakpoint rõ. Mặc định dùng:
+
+- `>= 1400px`: desktop rộng, tận dụng container lớn.
+- `1024px - 1399px`: desktop thường, giảm số cột nếu cần.
+- `768px - 1023px`: tablet, ưu tiên 1-2 cột.
+- `< 768px`: mobile, 1 cột, padding 16px hoặc gutter 12px.
+
+Responsive không chỉ là co nhỏ font. Phải đổi cấu trúc grid khi cần:
+
+- 4 cột xuống 3/2/1 cột.
+- Hero 3 cột xuống 2 cột rồi 1 cột.
+- Table có scroll hoặc chuyển card list.
+- Dialog/form giảm padding và width.
+
+Không được dùng `font-size: vw` cho text chính. Nếu cần responsive heading, dùng `clamp()` với giới hạn rõ.
+
+## 11. Text, icon và alignment
+
+Text/icon phải thuộc cùng một hệ căn chỉnh:
+
+- Icon + label trong button dùng PrimeReact `Button` icon API nếu có thể.
+- Icon + text trong row dùng flex `align-items: center`.
+- Icon + multiline text dùng `align-items: flex-start`.
+- Gap icon-text thường 8px.
+- Icon size phải phù hợp text, thường 16-20px.
+
+Không để icon rời khỏi control, ví dụ mũi tên submit nằm ngoài button hoặc social icon nằm một cột riêng không có border button.
+
+Text phải không overlap và không tràn vô lý:
+
+- Dùng `min-width: 0` cho child trong grid/flex.
+- Dùng line-height rõ.
+- Dùng clamp hoặc responsive layout cho heading lớn.
+- Chỉ truncate khi thực sự cần, và không truncate label ngắn nếu còn không gian.
+
+## 12. CSS organization
+
+CSS phải được scope theo module/page/component:
+
+- Layout chung đặt trong file layout/global phù hợp.
+- Page-specific style đặt theo page.
+- Component-specific style dùng prefix của component.
+- Class nên đặt theo BEM hoặc convention tương tự: `.login-form__field`, `.home-hero__stats`, `.doctor-card__actions`.
+
+Không tạo selector quá rộng như:
+
+```css
+.page input { ... }
+.card button { ... }
+main .p-button { ... }
+body .p-inputtext { ... }
+```
+
+Tránh `!important`. Chỉ dùng khi bắt buộc override thư viện và không có selector scoped tốt hơn. Nếu dùng, phải giới hạn phạm vi rất cụ thể.
+
+Không hard-code màu rải rác nếu token đã có. Nếu cần màu mới cho status/visual, phải phù hợp palette trong `DESIGN.md`.
+
+## 13. Kiểm tra trước khi hoàn thành UI task
+
+Sau khi sửa UI, Codex phải tự kiểm tra:
+
+- Có sửa nhầm business logic/API/route không.
+- Có xóa chức năng hiện có không.
+- PrimeReact button/input/dropdown/password/checkbox còn đủ style không.
+- Input cùng nhóm có cùng width/height không.
+- Button CTA có background/border/icon đúng không.
+- Grid/card có vỡ ở desktop/tablet/mobile không.
+- Có overflow ngang không.
+- Có overlap text/icon/card không.
+- Header/footer có còn đúng layout không.
+- Màu/font/spacing có bám `DESIGN.md` không.
+- Nếu project có script build, chạy `npm run build` sau khi sửa UI code.
+
+Nếu task chỉ yêu cầu sửa tài liệu như `DESIGN.md`, không cần chạy build trừ khi user yêu cầu.
+
 ## 1. Tổng quan phong cách UI
 
 Giao diện cần chuyên nghiệp, sạch, hiện đại và phù hợp bối cảnh y tế. Người dùng chính gồm bệnh nhân, bác sĩ và quản trị viên, vì vậy UI phải ưu tiên khả năng đọc, thao tác nhanh, luồng rõ ràng và hạn chế màu gây nhiễu.
