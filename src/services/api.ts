@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getToken } from './keycloak';
+import { getToken } from '@/services/keycloak';
 
 const api = axios.create({
   baseURL: 'http://localhost:8080/api',

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Server, Activity, Cpu, ShieldAlert, LogOut, CheckCircle, RefreshCw, Layers } from 'lucide-react';
-import { doLogout, getUserInfo } from '../services/keycloak';
+import { doLogout, getUserInfo } from '@/services/keycloak';
 
 interface Log {
   time: string;

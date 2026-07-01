@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import keycloak, { hasRole } from '../services/keycloak';
+import keycloak, { hasRole } from '@/services/keycloak';
 
 interface PrivateRouteProps {
   children: React.ReactNode;
