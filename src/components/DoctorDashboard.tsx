@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Calendar, Clock, CheckCircle, Lock, Unlock, Users, FileText, Activity, LogOut, Award, Star } from 'lucide-react';
-import { doLogout, getUserInfo } from '../services/keycloak';
+import { doLogout, getUserInfo } from '@/services/keycloak';
 
 interface Patient {
   id: string;
