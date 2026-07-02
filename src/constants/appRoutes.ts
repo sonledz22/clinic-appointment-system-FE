@@ -1,4 +1,7 @@
 export const APP_ROUTES = {
+  LOGIN: '/login',
+  REGISTER: '/register',
+  FORGOT_PASSWORD: '/forgot-password',
   HOME: '/',
   DOCTORS: '/doctors',
   HOSPITALS: '/hospitals',
