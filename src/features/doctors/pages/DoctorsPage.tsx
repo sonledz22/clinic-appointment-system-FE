@@ -1,21 +1,56 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dropdown } from 'primereact/dropdown';
 import AppLayout from '@/components/layout/AppLayout';
 import PageHeader from '@/components/ui/PageHeader';
 import SearchBar from '@/components/ui/SearchBar';
 import EmptyState from '@/components/ui/EmptyState';
 import DoctorCard from '@/features/doctors/components/DoctorCard';
-import { doctors } from '@/mocks/doctors';
+import { fetchDoctors, mapDoctorToCard } from '@/features/doctors/services/doctorApi';
+import type { DoctorCardViewModel } from '@/features/doctors/types/doctor';
 
 export interface DoctorsPageProps {}
 
 const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
+  const [doctors, setDoctors] = useState<DoctorCardViewModel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [specialty, setSpecialty] = useState<string | null>(null);
   const [workplaceType, setWorkplaceType] = useState<string | null>(null);
   const [rating, setRating] = useState<number | null>(null);
 
-  const specialtyOptions = useMemo(() => Array.from(new Set(doctors.map((doctor) => doctor.specialty))), []);
+  useEffect(() => {
+    let mounted = true;
+
+    const loadDoctors = async () => {
+      try {
+        const response = await fetchDoctors();
+        if (!mounted) {
+          return;
+        }
+        setDoctors(response.map(mapDoctorToCard));
+        setError('');
+      } catch {
+        if (!mounted) {
+          return;
+        }
+        setDoctors([]);
+        setError('Khong the tai danh sach bac si tu doctor-service.');
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDoctors();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const specialtyOptions = useMemo(() => Array.from(new Set(doctors.map((doctor) => doctor.specialty))), [doctors]);
   const typeOptions = ['Bệnh viện', 'Phòng khám'];
   const ratingOptions = [5, 4.8, 4.5];
 
@@ -29,7 +64,7 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
       const matchesRating = !rating || doctor.rating >= rating;
       return matchesSearch && matchesSpecialty && matchesType && matchesRating;
     });
-  }, [rating, searchTerm, specialty, workplaceType]);
+  }, [doctors, rating, searchTerm, specialty, workplaceType]);
 
   return (
     <AppLayout>
@@ -40,7 +75,11 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
         <Dropdown value={workplaceType} options={typeOptions} onChange={(event) => setWorkplaceType(event.value)} placeholder="Cơ sở" showClear />
         <Dropdown value={rating} options={ratingOptions} onChange={(event) => setRating(event.value)} placeholder="Rating từ" showClear />
       </section>
-      {filteredDoctors.length ? (
+      {loading ? (
+        <EmptyState title="Dang tai du lieu bac si" description="Frontend dang goi doctor-service de lay danh sach bac si." />
+      ) : error ? (
+        <EmptyState title="Khong tai duoc doctor-service" description={error} />
+      ) : filteredDoctors.length ? (
         <section className="entity-grid">
           {filteredDoctors.map((doctor) => <DoctorCard key={doctor.id} doctor={doctor} />)}
         </section>

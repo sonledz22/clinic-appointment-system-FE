@@ -3,12 +3,12 @@ import { Card } from 'primereact/card';
 import { Tag } from 'primereact/tag';
 import AppImage from '@/components/common/AppImage';
 import { appIcons } from '@/constants/appIcons';
-import type { DoctorMock } from '@/mocks/doctors';
+import type { DoctorCardViewModel } from '@/features/doctors/types/doctor';
 
 export interface DoctorCardProps {
-  doctor: DoctorMock;
-  onViewDetails?: (doctor: DoctorMock) => void;
-  onBook?: (doctor: DoctorMock) => void;
+  doctor: DoctorCardViewModel;
+  onViewDetails?: (doctor: DoctorCardViewModel) => void;
+  onBook?: (doctor: DoctorCardViewModel) => void;
 }
 
 const DoctorCard = ({ doctor, onViewDetails, onBook }: Readonly<DoctorCardProps>) => {
