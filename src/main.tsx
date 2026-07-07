@@ -6,23 +6,21 @@ import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
 import 'primeflex/primeflex.css';
 import App from '@/App';
+import AppToast from '@/components/common/AppToast';
 import '@/index.css';
 import '@/styles/prime-theme.css';
 import '@/styles/globals.css';
 import '@/styles/layout.css';
 import '@/styles/pages.css';
 import { primeReactConfig, setupPrimeReact } from '@/config/primeReact';
-import { initKeycloak } from '@/services/keycloak';
 
 setupPrimeReact();
 
-// Khởi tạo Keycloak trước khi render ứng dụng
-initKeycloak(() => {
-  ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <PrimeReactProvider value={primeReactConfig}>
-        <App />
-      </PrimeReactProvider>
-    </React.StrictMode>
-  );
-});
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <PrimeReactProvider value={primeReactConfig}>
+      <AppToast />
+      <App />
+    </PrimeReactProvider>
+  </React.StrictMode>,
+);
