@@ -3,14 +3,28 @@ import { Link } from 'react-router-dom';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { APP_ROUTES } from '@/constants/appRoutes';
+import { forgotPasswordSchema, getValidationFieldErrors } from '@/features/auth/authSchemas';
+import { appToast } from '@/utils/toast';
 
 export interface ForgotPasswordFormProps {}
 
+type ForgotPasswordFieldErrors = Partial<Record<'email', string>>;
+
 const ForgotPasswordForm = ({}: Readonly<ForgotPasswordFormProps>) => {
   const [email, setEmail] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<ForgotPasswordFieldErrors>({});
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setFieldErrors({});
+
+    const validation = forgotPasswordSchema.safeParse({ email });
+    if (!validation.success) {
+      setFieldErrors(getValidationFieldErrors<'email'>(validation.error));
+      return;
+    }
+
+    appToast.info('Đã ghi nhận yêu cầu', 'Nếu email tồn tại, hệ thống sẽ gửi hướng dẫn đặt lại mật khẩu.');
   };
 
   return (
@@ -36,6 +50,11 @@ const ForgotPasswordForm = ({}: Readonly<ForgotPasswordFormProps>) => {
             autoComplete="email"
           />
         </span>
+        {fieldErrors.email ? (
+          <p className="login-form__field-error" role="alert">
+            {fieldErrors.email}
+          </p>
+        ) : null}
       </div>
 
       <Button className="login-form__submit" type="submit" label="Gửi hướng dẫn" icon="pi pi-arrow-right" iconPos="right" />

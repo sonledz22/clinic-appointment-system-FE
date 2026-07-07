@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, Calendar, CheckCircle, Clock, FileText, LogOut, RefreshCcw, Trash2, UserRound } from 'lucide-react';
-import { doLogout, getUserInfo } from '@/services/keycloak';
+import { useNavigate } from 'react-router-dom';
+import { APP_ROUTES } from '@/constants/appRoutes';
 import {
   addDoctorSlot,
   bookDoctorSlot,
@@ -10,6 +11,7 @@ import {
   fetchDoctorSlots,
 } from '@/features/doctors/services/doctorApi';
 import type { Doctor, Slot } from '@/features/doctors/types/doctor';
+import { useAuthStore } from '@/stores/auth.store';
 
 interface Patient {
   id: string;
@@ -54,7 +56,16 @@ const buildDefaultEndTime = (startTime: string) => {
 };
 
 const DoctorDashboard: React.FC = () => {
-  const userInfo = getUserInfo();
+  const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+  const userInfo = useMemo(
+    () => ({
+      id: user?.id ?? '',
+      name: user?.email ?? '',
+    }),
+    [user],
+  );
   const [patients, setPatients] = useState<Patient[]>(initialPatients);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -229,6 +240,11 @@ const DoctorDashboard: React.FC = () => {
     }
   };
 
+  const handleLogout = async () => {
+    await logout();
+    navigate(APP_ROUTES.LOGIN, { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-700 font-sans flex flex-col w-full antialiased">
       <header className="bg-white border-b border-slate-100 sticky top-0 z-50 shadow-sm">
@@ -245,7 +261,7 @@ const DoctorDashboard: React.FC = () => {
               <p className="text-xs font-bold text-slate-700">{userInfo.name || 'Hệ thống Bác sĩ'}</p>
             </div>
             <button
-              onClick={() => doLogout()}
+              onClick={handleLogout}
               className="flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-white border border-red-200 hover:bg-red-500 hover:border-red-500 px-4 py-2.5 rounded-xl transition-all bg-white shadow-sm cursor-pointer"
             >
               <LogOut className="w-4 h-4" />

@@ -321,6 +321,12 @@
   gap: 9px;
 }
 
+.login-form__field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .login-form__field label {
   color: var(--app-text);
   font-size: 14px;
@@ -375,6 +381,25 @@
   font-size: 15px;
 }
 
+.login-form__field select.p-inputtext {
+  appearance: none;
+  cursor: pointer;
+}
+
+.login-form__field-grid .p-inputtext {
+  padding-left: 44px;
+  font-size: 14px;
+}
+
+.login-form__field-grid .p-input-icon-left > i {
+  left: 14px;
+  font-size: 15px;
+}
+
+.login-form__field-grid .p-inputtext::placeholder {
+  font-size: 13px;
+}
+
 .login-form__password-shell .p-password-input {
   padding-right: 52px;
 }
@@ -385,6 +410,14 @@
   margin-top: -8px;
   color: #94A3B8;
   font-size: 17px;
+}
+
+.login-form__field-error {
+  margin: -2px 0 0;
+  color: #DC2626;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .login-form__options {
@@ -453,7 +486,8 @@
 
 .login-form__socials {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
 }
 
 .login-form__socials .p-button.p-button-outlined {
@@ -485,9 +519,18 @@
   color: var(--app-text);
 }
 
-.login-form__socials .pi-google {
-  color: #EA4335;
-  font-size: 22px;
+.login-form__google-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  display: block;
+}
+
+.login-form__keycloak-icon {
+  width: 58px;
+  height: 24px;
+  object-fit: contain;
+  display: block;
 }
 
 .login-form__signup {
@@ -1513,6 +1556,7 @@
   }
 
   .login-form__options,
+  .login-form__field-grid,
   .login-form__socials {
     grid-template-columns: 1fr;
   }

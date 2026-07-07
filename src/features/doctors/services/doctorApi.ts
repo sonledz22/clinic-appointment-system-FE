@@ -20,17 +20,17 @@ const toDoctorCard = (doctor: Doctor): DoctorCardViewModel => ({
 });
 
 export const fetchDoctors = async () => {
-  const response = await axiosClient.get<Doctor[]>('/doctors');
+  const response = await axiosClient.get<Doctor[]>('/api/doctors');
   return response.data;
 };
 
 export const fetchDoctorSlots = async (doctorId: string) => {
-  const response = await axiosClient.get<Slot[]>(`/doctors/${doctorId}/slots`);
+  const response = await axiosClient.get<Slot[]>(`/api/doctors/${doctorId}/slots`);
   return response.data;
 };
 
 export const addDoctorSlot = async (doctorId: string, startTime: string, endTime: string) => {
-  const response = await axiosClient.post<Doctor>(`/doctors/${doctorId}/slots`, {
+  const response = await axiosClient.post<Doctor>(`/api/doctors/${doctorId}/slots`, {
     startTime,
     endTime,
   });
@@ -38,17 +38,17 @@ export const addDoctorSlot = async (doctorId: string, startTime: string, endTime
 };
 
 export const bookDoctorSlot = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.post<Slot>(`/doctors/${doctorId}/slots/${slotId}/book`);
+  const response = await axiosClient.post<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/book`);
   return response.data;
 };
 
 export const cancelDoctorSlotBooking = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.delete<Slot>(`/doctors/${doctorId}/slots/${slotId}/book`);
+  const response = await axiosClient.delete<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/book`);
   return response.data;
 };
 
 export const deleteDoctorSlot = async (doctorId: string, slotId: string) => {
-  await axiosClient.delete(`/doctors/${doctorId}/slots/${slotId}`);
+  await axiosClient.delete(`/api/doctors/${doctorId}/slots/${slotId}`);
 };
 
 export const mapDoctorToCard = toDoctorCard;

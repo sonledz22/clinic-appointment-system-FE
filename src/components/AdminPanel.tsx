@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Server, Activity, Cpu, ShieldAlert, LogOut, CheckCircle, RefreshCw, Layers } from 'lucide-react';
-import { doLogout, getUserInfo } from '@/services/keycloak';
+import { useNavigate } from 'react-router-dom';
+import { APP_ROUTES } from '@/constants/appRoutes';
+import { useAuthStore } from '@/stores/auth.store';
 
 interface Log {
   time: string;
@@ -20,7 +22,9 @@ interface SimLog {
 }
 
 const AdminPanel: React.FC = () => {
-  const userInfo = getUserInfo();
+  const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
   const [logs, setLogs] = useState<Log[]>(initialLogs);
   const [simRunning, setSimRunning] = useState(false);
   const [simStep, setSimStep] = useState(0);
@@ -73,6 +77,11 @@ const AdminPanel: React.FC = () => {
     });
   };
 
+  const handleLogout = async () => {
+    await logout();
+    navigate(APP_ROUTES.LOGIN, { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-700 font-sans flex flex-col w-full antialiased">
       {/* Header */}
@@ -87,10 +96,10 @@ const AdminPanel: React.FC = () => {
           <div className="flex items-center gap-5">
             <div className="text-right">
               <p className="text-[11px] text-slate-400 font-medium">Vai trò: Admin</p>
-              <p className="text-xs font-bold text-slate-700">{userInfo.name || 'Người quản trị'}</p>
+              <p className="text-xs font-bold text-slate-700">{user?.email || 'Người quản trị'}</p>
             </div>
             <button
-              onClick={() => doLogout()}
+              onClick={handleLogout}
               className="flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-white border border-red-200 hover:bg-red-500 hover:border-red-500 px-4 py-2.5 rounded-xl transition-all-300 bg-white shadow-sm cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
