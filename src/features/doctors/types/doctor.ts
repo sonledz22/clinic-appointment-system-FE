@@ -4,6 +4,7 @@ export interface Slot {
   startTime: string;
   endTime: string;
   booked: boolean;
+  status?: string;
 }
 
 export interface Doctor {
@@ -14,6 +15,9 @@ export interface Doctor {
   phoneNumber: string;
   email: string;
   active: boolean;
+  biography?: string;
+  qualifications?: string;
+  avatarUrl?: string;
   slots: Slot[];
 }
 

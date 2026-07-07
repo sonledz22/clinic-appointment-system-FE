@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Calendar, CheckCircle, Clock, FileText, LogOut, RefreshCcw, Trash2, UserRound } from 'lucide-react';
+import { Activity, Calendar, CheckCircle, Clock, FileText, LogOut, RefreshCcw, Trash2, UserRound, Edit, Award, BookOpen } from 'lucide-react';
 import { doLogout, getUserInfo } from '@/services/keycloak';
 import {
   addDoctorSlot,
+  generateDoctorSlots,
+  reserveDoctorSlot,
+  releaseDoctorSlot,
   bookDoctorSlot,
   cancelDoctorSlotBooking,
   deleteDoctorSlot,
   fetchDoctors,
   fetchDoctorSlots,
+  fetchMyProfile,
+  updateMyProfile,
 } from '@/features/doctors/services/doctorApi';
 import type { Doctor, Slot } from '@/features/doctors/types/doctor';
 
@@ -57,6 +62,68 @@ const DoctorDashboard: React.FC = () => {
   const userInfo = getUserInfo();
   const [patients, setPatients] = useState<Patient[]>(initialPatients);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
+
+  // Profile states
+  const [profile, setProfile] = useState<Doctor | null>(null);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    specialization: '',
+    phoneNumber: '',
+    email: '',
+    biography: '',
+    qualifications: '',
+    avatarUrl: ''
+  });
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+
+  const loadProfile = async () => {
+    setLoadingProfile(true);
+    setProfileError('');
+    try {
+      const data = await fetchMyProfile();
+      setProfile(data);
+      setProfileForm({
+        name: data.name || '',
+        specialization: data.specialization || '',
+        phoneNumber: data.phoneNumber || '',
+        email: data.email || '',
+        biography: data.biography || '',
+        qualifications: data.qualifications || '',
+        avatarUrl: data.avatarUrl || ''
+      });
+    } catch (err: any) {
+      console.error(err);
+      setProfileError('Không thể tải thông tin trang cá nhân bác sĩ.');
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingProfile(true);
+    setProfileError('');
+    try {
+      const updated = await updateMyProfile(profileForm);
+      setProfile(updated);
+      setIsEditingProfile(false);
+      
+      // Update doctors list so selector and header are updated
+      setDoctors(prev => prev.map(d => d.id === updated.id ? { ...d, ...updated } : d));
+    } catch (err: any) {
+      console.error(err);
+      setProfileError(err.response?.data?.message || 'Cập nhật trang cá nhân thất bại.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -64,6 +131,8 @@ const DoctorDashboard: React.FC = () => {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [savingSlot, setSavingSlot] = useState(false);
   const [error, setError] = useState('');
+  const [formMode, setFormMode] = useState<'manual' | 'auto'>('manual');
+  const [duration, setDuration] = useState(30);
   const [slotForm, setSlotForm] = useState(() => {
     const startDate = new Date();
     startDate.setMinutes(0, 0, 0);
@@ -191,6 +260,57 @@ const DoctorDashboard: React.FC = () => {
     }
   };
 
+  const handleGenerateSlots = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedDoctorId || !slotForm.startTime || !slotForm.endTime) {
+      setError('Cần chọn bác sĩ và nhập đầy đủ giờ bắt đầu, giờ kết thúc.');
+      return;
+    }
+
+    setSavingSlot(true);
+    try {
+      await generateDoctorSlots(selectedDoctorId, slotForm.startTime, slotForm.endTime, duration);
+      await refreshSlots();
+      setError('');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Không thể tự động sinh các slot. Vui lòng kiểm tra lại thời gian.');
+    } finally {
+      setSavingSlot(false);
+    }
+  };
+
+  const handleReserveSlot = async (slot: Slot) => {
+    if (!selectedDoctorId) {
+      return;
+    }
+    setSavingSlot(true);
+    try {
+      await reserveDoctorSlot(selectedDoctorId, slot.id);
+      await refreshSlots();
+      setError('');
+    } catch {
+      setError('Không thể tạm giữ chỗ cho slot đã chọn.');
+    } finally {
+      setSavingSlot(false);
+    }
+  };
+
+  const handleReleaseSlot = async (slot: Slot) => {
+    if (!selectedDoctorId) {
+      return;
+    }
+    setSavingSlot(true);
+    try {
+      await releaseDoctorSlot(selectedDoctorId, slot.id);
+      await refreshSlots();
+      setError('');
+    } catch {
+      setError('Không thể giải phóng slot đã chọn.');
+    } finally {
+      setSavingSlot(false);
+    }
+  };
+
   const handleToggleBooked = async (slot: Slot) => {
     if (!selectedDoctorId) {
       return;
@@ -226,6 +346,26 @@ const DoctorDashboard: React.FC = () => {
       setError('Khong the xoa slot da chon.');
     } finally {
       setSavingSlot(false);
+    }
+  };
+
+  const getSlotStatusText = (slot: Slot) => {
+    const status = slot.status || (slot.booked ? 'BOOKED' : 'AVAILABLE');
+    switch (status) {
+      case 'BOOKED': return 'Đã đặt';
+      case 'RESERVED': return 'Đang giữ chỗ';
+      case 'BLOCKED': return 'Bị khóa';
+      default: return 'Còn trống';
+    }
+  };
+
+  const getSlotStatusClass = (slot: Slot) => {
+    const status = slot.status || (slot.booked ? 'BOOKED' : 'AVAILABLE');
+    switch (status) {
+      case 'BOOKED': return 'bg-[#E6F7FF] text-[#007BFF] border border-[#007BFF]/20';
+      case 'RESERVED': return 'bg-amber-50 text-amber-600 border border-amber-100';
+      case 'BLOCKED': return 'bg-red-50 text-red-650 border border-red-150';
+      default: return 'bg-emerald-50 text-emerald-600 border border-emerald-100';
     }
   };
 
@@ -359,6 +499,185 @@ const DoctorDashboard: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Hồ sơ cá nhân Bác sĩ */}
+          <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-premium space-y-5">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2.5">
+                <UserRound className="w-5 h-5 text-[#007BFF]" />
+                Hồ sơ cá nhân bác sĩ
+              </h2>
+              {!isEditingProfile && profile && (
+                <button
+                  onClick={() => setIsEditingProfile(true)}
+                  className="flex items-center gap-1 text-xs font-bold text-[#007BFF] hover:bg-[#007BFF]/5 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>Chỉnh sửa</span>
+                </button>
+              )}
+            </div>
+
+            {profileError && (
+              <div className="bg-red-50 text-red-650 text-xs p-3.5 rounded-xl border border-red-100 font-semibold">
+                {profileError}
+              </div>
+            )}
+
+            {loadingProfile ? (
+              <div className="text-center py-6 text-xs text-slate-400 font-medium">
+                Đang tải thông tin cá nhân...
+              </div>
+            ) : isEditingProfile ? (
+              <form onSubmit={handleUpdateProfile} className="space-y-4 text-xs font-bold text-slate-500">
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex flex-col gap-1.5">
+                    Họ và tên *
+                    <input
+                      type="text"
+                      className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-semibold"
+                      value={profileForm.name}
+                      onChange={e => setProfileForm({ ...profileForm, name: e.target.value })}
+                      required
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    Chuyên khoa *
+                    <input
+                      type="text"
+                      className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-semibold"
+                      value={profileForm.specialization}
+                      onChange={e => setProfileForm({ ...profileForm, specialization: e.target.value })}
+                      required
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex flex-col gap-1.5">
+                    Số điện thoại *
+                    <input
+                      type="text"
+                      className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-semibold"
+                      value={profileForm.phoneNumber}
+                      onChange={e => setProfileForm({ ...profileForm, phoneNumber: e.target.value })}
+                      required
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    Email *
+                    <input
+                      type="email"
+                      className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-semibold"
+                      value={profileForm.email}
+                      onChange={e => setProfileForm({ ...profileForm, email: e.target.value })}
+                      required
+                    />
+                  </label>
+                </div>
+
+                <label className="flex flex-col gap-1.5">
+                  Ảnh đại diện (URL)
+                  <input
+                    type="text"
+                    className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-semibold"
+                    placeholder="https://example.com/avatar.jpg"
+                    value={profileForm.avatarUrl}
+                    onChange={e => setProfileForm({ ...profileForm, avatarUrl: e.target.value })}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  Bằng cấp & Trình độ
+                  <input
+                    type="text"
+                    className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-semibold"
+                    placeholder="Ví dụ: Thạc sĩ - Bác sĩ nội trú"
+                    value={profileForm.qualifications}
+                    onChange={e => setProfileForm({ ...profileForm, qualifications: e.target.value })}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  Tiểu sử cá nhân
+                  <textarea
+                    rows={3}
+                    className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-semibold leading-relaxed"
+                    placeholder="Giới thiệu kinh nghiệm làm việc, thế mạnh lâm sàng..."
+                    value={profileForm.biography}
+                    onChange={e => setProfileForm({ ...profileForm, biography: e.target.value })}
+                  />
+                </label>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingProfile(false);
+                      setProfileError('');
+                    }}
+                    className="px-4 py-2 border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 transition-all font-bold cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingProfile}
+                    className="px-4 py-2 bg-[#007BFF] text-white rounded-xl hover:bg-[#0056b3] transition-all font-bold disabled:opacity-50 cursor-pointer"
+                  >
+                    {savingProfile ? 'Đang lưu...' : 'Lưu hồ sơ'}
+                  </button>
+                </div>
+              </form>
+            ) : profile ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={profile.avatarUrl || 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=150'}
+                    alt={profile.name}
+                    className="w-16 h-16 rounded-2xl object-cover border border-slate-100 shadow-sm"
+                  />
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">{profile.name}</h3>
+                    <p className="text-xs text-[#007BFF] font-bold mt-0.5">{profile.specialization}</p>
+                    {profile.qualifications && (
+                      <p className="text-[11px] text-slate-400 font-semibold flex items-center gap-1 mt-1">
+                        <Award className="w-3.5 h-3.5 text-amber-500" />
+                        {profile.qualifications}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs border-t border-slate-50 pt-3">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Số điện thoại</span>
+                    <span className="text-slate-700 font-bold mt-0.5 block">{profile.phoneNumber}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Email liên hệ</span>
+                    <span className="text-slate-700 font-bold mt-0.5 block break-all">{profile.email}</span>
+                  </div>
+                </div>
+
+                {profile.biography && (
+                  <div className="border-t border-slate-50 pt-3">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
+                      <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                      Tiểu sử & Kinh nghiệm
+                    </span>
+                    <p className="text-xs text-slate-600 leading-relaxed font-semibold mt-1.5 bg-[#F8F9FA] p-3 rounded-xl border border-slate-205/40">
+                      {profile.biography}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-xs text-slate-400 font-medium">
+                Chưa có thông tin cá nhân.
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="lg:col-span-7 bg-white border border-slate-100 rounded-3xl p-7 shadow-premium space-y-6">
@@ -408,39 +727,110 @@ const DoctorDashboard: React.FC = () => {
             </div>
           </div>
 
-          <form className="grid gap-4 rounded-2xl border border-slate-100 bg-[#F8F9FA] p-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={handleAddSlot}>
-            <label className="flex flex-col gap-2 text-xs font-bold text-slate-500">
-              Giờ bắt đầu
-              <input
-                type="datetime-local"
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
-                value={slotForm.startTime}
-                onChange={(event) => {
-                  const startTime = event.target.value;
-                  setSlotForm({
-                    startTime,
-                    endTime: buildDefaultEndTime(startTime),
-                  });
-                }}
-              />
-            </label>
-            <label className="flex flex-col gap-2 text-xs font-bold text-slate-500">
-              Giờ kết thúc
-              <input
-                type="datetime-local"
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
-                value={slotForm.endTime}
-                onChange={(event) => setSlotForm((current) => ({ ...current, endTime: event.target.value }))}
-              />
-            </label>
+          {/* Form Mode Selector */}
+          <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
             <button
-              type="submit"
-              disabled={!selectedDoctorId || savingSlot}
-              className="rounded-xl bg-[#007BFF] px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onClick={() => setFormMode('manual')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                formMode === 'manual' ? 'bg-white text-[#007BFF] shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
             >
-              Thêm slot
+              Thêm thủ công
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => setFormMode('auto')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                formMode === 'auto' ? 'bg-white text-[#007BFF] shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Tự động sinh slots
+            </button>
+          </div>
+
+          {formMode === 'manual' ? (
+            <form className="grid gap-4 rounded-2xl border border-slate-100 bg-[#F8F9FA] p-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={handleAddSlot}>
+              <label className="flex flex-col gap-2 text-xs font-bold text-slate-500">
+                Giờ bắt đầu
+                <input
+                  type="datetime-local"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                  value={slotForm.startTime}
+                  onChange={(event) => {
+                    const startTime = event.target.value;
+                    setSlotForm({
+                      startTime,
+                      endTime: buildDefaultEndTime(startTime),
+                    });
+                  }}
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-xs font-bold text-slate-500">
+                Giờ kết thúc
+                <input
+                  type="datetime-local"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                  value={slotForm.endTime}
+                  onChange={(event) => setSlotForm((current) => ({ ...current, endTime: event.target.value }))}
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={!selectedDoctorId || savingSlot}
+                className="rounded-xl bg-[#007BFF] px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+              >
+                Thêm slot
+              </button>
+            </form>
+          ) : (
+            <form className="grid gap-4 rounded-2xl border border-slate-100 bg-[#F8F9FA] p-4 md:grid-cols-[1fr_1fr_1fr_auto]" onSubmit={handleGenerateSlots}>
+              <label className="flex flex-col gap-2 text-xs font-bold text-slate-500">
+                Giờ bắt đầu ca
+                <input
+                  type="datetime-local"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                  value={slotForm.startTime}
+                  onChange={(event) => {
+                    const startTime = event.target.value;
+                    setSlotForm({
+                      startTime,
+                      endTime: buildDefaultEndTime(startTime),
+                    });
+                  }}
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-xs font-bold text-slate-500">
+                Giờ kết thúc ca
+                <input
+                  type="datetime-local"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                  value={slotForm.endTime}
+                  onChange={(event) => setSlotForm((current) => ({ ...current, endTime: event.target.value }))}
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-xs font-bold text-slate-500">
+                Thời lượng slot
+                <select
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                  value={duration}
+                  onChange={(event) => setDuration(Number(event.target.value))}
+                >
+                  <option value="15">15 phút</option>
+                  <option value="30">30 phút</option>
+                  <option value="45">45 phút</option>
+                  <option value="60">60 phút</option>
+                </select>
+              </label>
+              <button
+                type="submit"
+                disabled={!selectedDoctorId || savingSlot}
+                className="rounded-xl bg-[#007BFF] px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+              >
+                Sinh tự động
+              </button>
+            </form>
+          )}
 
           {error ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
@@ -464,25 +854,53 @@ const DoctorDashboard: React.FC = () => {
                     <div>
                       <p className="text-sm font-bold text-slate-800">{formatSlotTime(slot.startTime)}</p>
                       <p className="mt-1 text-xs text-slate-500">Kết thúc: {formatSlotTime(slot.endTime)}</p>
-                      <p className={`mt-2 inline-flex rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider ${
-                        slot.booked ? 'bg-[#E6F7FF] text-[#007BFF]' : 'bg-emerald-50 text-emerald-600'
-                      }`}
-                      >
-                        {slot.booked ? 'Đã đặt' : 'Còn trống'}
+                      <p className={`mt-2 inline-flex rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider ${getSlotStatusClass(slot)}`}>
+                        {getSlotStatusText(slot)}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => handleToggleBooked(slot)}
-                        disabled={savingSlot}
-                        className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {slot.booked ? 'Hủy đặt' : 'Đánh dấu đã đặt'}
-                      </button>
+                      {/* Booking/Unbooking Actions */}
+                      {slot.status !== 'BOOKED' && slot.status !== 'RESERVED' && !slot.booked ? (
+                        <button
+                          onClick={() => handleToggleBooked(slot)}
+                          disabled={savingSlot}
+                          className="rounded-xl border border-slate-200 hover:bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                        >
+                          Đánh dấu đã đặt
+                        </button>
+                      ) : (slot.status === 'BOOKED' || slot.booked) ? (
+                        <button
+                          onClick={() => handleToggleBooked(slot)}
+                          disabled={savingSlot}
+                          className="rounded-xl border border-slate-200 hover:bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                        >
+                          Hủy đặt
+                        </button>
+                      ) : null}
+
+                      {/* Reservation Actions */}
+                      {(slot.status === 'AVAILABLE' || (!slot.status && !slot.booked)) ? (
+                        <button
+                          onClick={() => handleReserveSlot(slot)}
+                          disabled={savingSlot}
+                          className="rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-2 text-xs font-bold text-white transition-all cursor-pointer"
+                        >
+                          Giữ chỗ
+                        </button>
+                      ) : slot.status === 'RESERVED' ? (
+                        <button
+                          onClick={() => handleReleaseSlot(slot)}
+                          disabled={savingSlot}
+                          className="rounded-xl bg-slate-500 hover:bg-slate-600 px-4 py-2 text-xs font-bold text-white transition-all cursor-pointer"
+                        >
+                          Giải phóng
+                        </button>
+                      ) : null}
+
                       <button
                         onClick={() => handleDeleteSlot(slot.id)}
                         disabled={savingSlot}
-                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 hover:bg-red-50 px-4 py-2 text-xs font-bold text-red-500 disabled:cursor-not-allowed disabled:opacity-50 transition-all cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
                         Xóa slot

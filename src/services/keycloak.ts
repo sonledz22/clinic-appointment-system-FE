@@ -1,13 +1,18 @@
-// ĐÃ MOCK: Tạm thời giả lập Keycloak để hiển thị giao diện không cần chạy Docker
-const keycloak = {
+import Keycloak from 'keycloak-js';
+
+// CHUYỂN THÀNH false ĐỂ KẾT NỐI KEYCLOAK THẬT
+// (Yêu cầu chạy Keycloak Docker trước: cd infra/keycloak; docker compose up -d)
+const USE_MOCK = false;
+
+const mockKeycloak = {
   authenticated: true,
-  login: () => {},
-  logout: () => alert('Đăng xuất (Giao diện thử nghiệm)'),
-  subject: 'mock-user-id-123',
+  login: () => { },
+  logout: () => alert('Đăng xuất (Chế độ giả lập)'),
+  subject: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', // UUID bác sĩ
   token: 'mock-token',
   tokenParsed: {
-    name: 'Người dùng thử nghiệm',
-    email: 'test@example.com'
+    name: 'Dr. Nguyen Van A',
+    email: 'dr.nva@clinic.com'
   },
   realmAccess: {
     roles: ['user']
@@ -15,20 +20,86 @@ const keycloak = {
   hasRealmRole: (_role: string) => true
 };
 
+let keycloakInstance: any = null;
+
+if (!USE_MOCK) {
+  keycloakInstance = new Keycloak({
+    url: 'http://localhost:9080',
+    realm: 'clinic-appointment',
+    clientId: 'clinic-web'
+  });
+}
+
 export const initKeycloak = (onAuthenticatedCallback: () => void) => {
-  // Gọi trực tiếp callback để chạy ứng dụng không cần server auth
-  onAuthenticatedCallback();
+  if (USE_MOCK) {
+    onAuthenticatedCallback();
+    return;
+  }
+
+  keycloakInstance.init({
+    onLoad: 'login-required',
+    checkLoginIframe: false,
+  }).then((authenticated: boolean) => {
+    if (authenticated) {
+      onAuthenticatedCallback();
+    } else {
+      keycloakInstance.login();
+    }
+  }).catch((err: any) => {
+    console.error('Lỗi khởi tạo Keycloak:', err);
+  });
 };
 
-export const doLogin = () => {};
-export const doLogout = () => alert('Đăng xuất (Giao diện thử nghiệm)');
-export const getToken = () => 'mock-token';
-export const getRoles = () => ['user']; // Trả về role 'user' để hiển thị PatientPortal làm trang chủ mặc định
-export const hasRole = (_role: string) => true; // Luôn cho phép truy cập mọi trang bảo mật khác (/doctor, /admin) khi vào trực tiếp link
-export const getUserInfo = () => ({
-  id: 'mock-user-id-123',
-  email: 'test@example.com',
-  name: 'Thành viên nhóm phát triển',
-});
+export const doLogin = () => {
+  if (USE_MOCK) return;
+  keycloakInstance.login();
+};
 
-export default keycloak;
+export const doLogout = () => {
+  if (USE_MOCK) {
+    alert('Đăng xuất (Chế độ giả lập)');
+    return;
+  }
+  keycloakInstance.logout({ redirectUri: window.location.origin });
+};
+
+export const getToken = () => {
+  if (USE_MOCK) return 'mock-token';
+  return keycloakInstance.token || '';
+};
+
+export const getRoles = () => {
+  if (USE_MOCK) {
+    // Trả về 'user' để hiển thị PatientPortal, hoặc 'DOCTOR' để hiển thị Dashboard bác sĩ
+    return ['user'];
+  }
+  const rawRoles = keycloakInstance.realmAccess?.roles || [];
+  return rawRoles.map((r: string) => {
+    const upper = r.toUpperCase();
+    if (upper === 'PATIENT') return 'user';
+    return upper.toLowerCase();
+  });
+};
+
+export const hasRole = (role: string) => {
+  if (USE_MOCK) return true;
+  const roles = getRoles();
+  return roles.includes(role.toLowerCase());
+};
+
+export const getUserInfo = () => {
+  if (USE_MOCK) {
+    return {
+      id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', // UUID bác sĩ
+      email: 'dr.nva@clinic.com',
+      name: 'Dr. Nguyen Van A',
+    };
+  }
+  return {
+    id: keycloakInstance.subject || '',
+    email: keycloakInstance.tokenParsed?.email || '',
+    name: keycloakInstance.tokenParsed?.name || '',
+  };
+};
+
+export default USE_MOCK ? mockKeycloak : keycloakInstance;

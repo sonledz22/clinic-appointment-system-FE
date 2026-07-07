@@ -17,6 +17,7 @@ const HealthPackagesPage = lazy(() => import('@/features/packages/pages/HealthPa
 const GuidesPage = lazy(() => import('@/features/guides/pages/GuidesPage'));
 const DoctorDashboard = lazy(() => import('@/components/DoctorDashboard'));
 const AdminPanel = lazy(() => import('@/components/AdminPanel'));
+const ProfilePage = lazy(() => import('@/features/profile/pages/ProfilePage'));
 
 // Điều hướng dựa trên vai trò người dùng sau khi đăng nhập
 const RootRedirect: React.FC = () => {
@@ -39,11 +40,11 @@ const App: React.FC = () => {
           <Route path={APP_ROUTES.REGISTER} element={<RegisterPage />} />
           <Route path={APP_ROUTES.FORGOT_PASSWORD} element={<ForgotPasswordPage />} />
 
-          {/* Bệnh nhân (Vai trò 'user') */}
+          {/* Trang chủ điều hướng (Yêu cầu đăng nhập, không giới hạn vai trò) */}
           <Route
             path={APP_ROUTES.HOME}
             element={
-              <PrivateRoute requiredRole={ROLES.USER}>
+              <PrivateRoute>
                 <RootRedirect />
               </PrivateRoute>
             }
@@ -90,6 +91,15 @@ const App: React.FC = () => {
             element={
               <PrivateRoute requiredRole={ROLES.USER}>
                 <GuidesPage />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path={APP_ROUTES.PROFILE}
+            element={
+              <PrivateRoute requiredRole={ROLES.USER}>
+                <ProfilePage />
               </PrivateRoute>
             }
           />
