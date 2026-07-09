@@ -10,6 +10,8 @@ export interface MessageResponse {
 
 export interface CurrentUser {
   id: string;
+  userId?: string;
+  patientId?: string;
   email: string;
   roles: string[];
 }

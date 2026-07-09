@@ -24,6 +24,18 @@ export const fetchDoctors = async () => {
   return response.data;
 };
 
+export const fetchDoctorSpecializations = async () => {
+  const response = await axiosClient.get<string[]>('/api/doctors/specializations');
+  return response.data;
+};
+
+export const fetchDoctorsBySpecialization = async (specialization: string) => {
+  const response = await axiosClient.get<Doctor[]>('/api/doctors', {
+    params: { specialization },
+  });
+  return response.data;
+};
+
 export const fetchDoctorSlots = async (doctorId: string) => {
   const response = await axiosClient.get<Slot[]>(`/api/doctors/${doctorId}/slots`);
   return response.data;

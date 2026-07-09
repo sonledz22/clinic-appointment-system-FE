@@ -1,1 +1,21 @@
-// Placeholder for appointment feature types.
+export interface CreateAppointmentPayload {
+  patientId: string;
+  doctorId: string;
+  slotId: string;
+  rescheduledFromAppointmentId?: string | null;
+  reason?: string;
+  bookingSource?: string;
+}
+
+export interface Appointment {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  slotId: string;
+  rescheduledFromAppointmentId?: string | null;
+  reason?: string | null;
+  bookingSource?: string | null;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
