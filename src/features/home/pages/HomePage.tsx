@@ -1,22 +1,28 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from 'primereact/button';
-import { Calendar } from 'primereact/calendar';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
+import { InputTextarea } from 'primereact/inputtextarea';
 import { Tag } from 'primereact/tag';
 import AppImage from '@/components/common/AppImage';
 import AppLayout from '@/components/layout/AppLayout';
 import { appIcons } from '@/constants/appIcons';
 import { APP_ROUTES } from '@/constants/appRoutes';
+import { createAppointment } from '@/features/appointments/services/appointmentApi';
+import { fetchDoctorSlots, fetchDoctorSpecializations, fetchDoctorsBySpecialization } from '@/features/doctors/services/doctorApi';
+import type { Doctor, Slot } from '@/features/doctors/types/doctor';
 import { doctors, type DoctorMock } from '@/mocks/doctors';
 import { hospitals } from '@/mocks/hospitals';
+import { useAuthStore } from '@/stores/auth.store';
 
 export interface HomePageProps {}
 
-const specialtyOptions = ['Tim mạch', 'Da liễu', 'Nhi khoa', 'Sản phụ khoa', 'Tai mũi họng', 'Cơ xương khớp', 'Mắt'];
-const facilityOptions = ['BV Chợ Rẫy', 'BV Tâm Anh', 'BV Vinmec', 'Phòng khám Tâm Đức'];
-const timeOptions = ['08:00 - 09:00', '09:00 - 10:00', '10:00 - 11:00', '14:00 - 15:00', '15:00 - 16:00'];
+interface QuickSelectOption {
+  label: string;
+  value: string;
+}
+
 const quickTags = ['Tim mạch', 'Da liễu', 'Nhi khoa', 'Sản phụ khoa', 'Tai mũi họng'];
 
 const heroStats = [
@@ -90,15 +96,142 @@ const healthGuides = [
   },
 ];
 
+const slotDateFormatter = new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+});
+
+const slotTimeFormatter = new Intl.DateTimeFormat('vi-VN', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+const isValidDate = (date: Date) => !Number.isNaN(date.getTime());
+
+const formatSlotLabel = (slot: Slot) => {
+  const startTime = new Date(slot.startTime);
+  const endTime = new Date(slot.endTime);
+
+  if (!isValidDate(startTime) || !isValidDate(endTime)) {
+    return `${slot.startTime} - ${slot.endTime}`;
+  }
+
+  return `${slotDateFormatter.format(startTime)} - ${slotTimeFormatter.format(startTime)} - ${slotTimeFormatter.format(endTime)}`;
+};
+
 const HomePage = ({}: Readonly<HomePageProps>) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorMock>(doctors[0]);
+  const [specializationOptions, setSpecializationOptions] = useState<string[]>([]);
+  const [quickDoctors, setQuickDoctors] = useState<Doctor[]>([]);
+  const [doctorSlots, setDoctorSlots] = useState<Slot[]>([]);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('');
-  const [selectedFacility, setSelectedFacility] = useState<string>('');
-  const [bookingDate, setBookingDate] = useState<Date | null>(new Date(2026, 5, 25));
-  const [bookingTime, setBookingTime] = useState<string>('');
+  const [selectedQuickDoctorId, setSelectedQuickDoctorId] = useState<string>('');
+  const [selectedSlotId, setSelectedSlotId] = useState<string>('');
+  const [bookingReason, setBookingReason] = useState('');
+  const [loadingSpecializations, setLoadingSpecializations] = useState(false);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [creatingAppointment, setCreatingAppointment] = useState(false);
+  const [quickBookingError, setQuickBookingError] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [favoriteDoctorIds, setFavoriteDoctorIds] = useState<string[]>([]);
+  const currentUser = useAuthStore((state) => state.user);
+
+  useEffect(() => {
+    let isActive = true;
+
+    setLoadingSpecializations(true);
+    fetchDoctorSpecializations()
+      .then((specializations) => {
+        if (!isActive) return;
+        setSpecializationOptions(specializations);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setQuickBookingError('Không thể tải danh sách chuyên khoa.');
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setLoadingSpecializations(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    setSelectedQuickDoctorId('');
+    setSelectedSlotId('');
+    setQuickDoctors([]);
+    setDoctorSlots([]);
+    setBookingSuccess(false);
+    setQuickBookingError('');
+
+    if (!selectedSpecialty) {
+      return () => {
+        isActive = false;
+      };
+    }
+
+    setLoadingDoctors(true);
+    fetchDoctorsBySpecialization(selectedSpecialty)
+      .then((matchedDoctors) => {
+        if (!isActive) return;
+        setQuickDoctors(matchedDoctors);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setQuickBookingError('Không thể tải danh sách bác sĩ theo chuyên khoa.');
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setLoadingDoctors(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedSpecialty]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    setSelectedSlotId('');
+    setDoctorSlots([]);
+    setBookingSuccess(false);
+    setQuickBookingError('');
+
+    if (!selectedQuickDoctorId) {
+      return () => {
+        isActive = false;
+      };
+    }
+
+    setLoadingSlots(true);
+    fetchDoctorSlots(selectedQuickDoctorId)
+      .then((slots) => {
+        if (!isActive) return;
+        setDoctorSlots(slots);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setQuickBookingError('Không thể tải slot của bác sĩ đã chọn.');
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setLoadingSlots(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedQuickDoctorId]);
 
   const featuredDoctors = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
@@ -111,19 +244,98 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     return matches.length ? matches.slice(0, 4) : doctors.slice(0, 4);
   }, [searchTerm]);
 
-  const bookingReady = Boolean(bookingDate && bookingTime);
+  const specializationSelectOptions = useMemo(
+    () =>
+      specializationOptions.map((specialization) => ({
+        label: specialization,
+        value: specialization,
+      })),
+    [specializationOptions],
+  );
+
+  const doctorOptions = useMemo(
+    () =>
+      quickDoctors
+        .filter((doctor) => doctor.active)
+        .map((doctor) => ({
+          label: `${doctor.name} - ${doctor.specialization}`,
+          value: doctor.id,
+        })),
+    [quickDoctors],
+  );
+
+  const slotOptions = useMemo(
+    () =>
+      [...doctorSlots]
+        .filter((slot) => !slot.booked)
+        .sort((firstSlot, secondSlot) => new Date(firstSlot.startTime).getTime() - new Date(secondSlot.startTime).getTime())
+        .map((slot) => ({
+          label: formatSlotLabel(slot),
+          value: slot.id,
+        })),
+    [doctorSlots],
+  );
+
+  const selectedQuickDoctor = useMemo(
+    () => quickDoctors.find((doctor) => doctor.id === selectedQuickDoctorId) ?? null,
+    [quickDoctors, selectedQuickDoctorId],
+  );
+
+  const selectedSlot = useMemo(
+    () => doctorSlots.find((slot) => slot.id === selectedSlotId) ?? null,
+    [doctorSlots, selectedSlotId],
+  );
+
+  const bookingReady = Boolean(selectedSpecialty && selectedQuickDoctorId && selectedSlotId);
 
   const handleBook = (doctor: DoctorMock) => {
     setSelectedDoctor(doctor);
-    setSelectedSpecialty(doctor.specialty);
-    setSelectedFacility(doctor.workplace);
+    if (specializationOptions.includes(doctor.specialty)) {
+      setSelectedSpecialty(doctor.specialty);
+    }
     setBookingSuccess(false);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!bookingReady) return;
-    setBookingSuccess(true);
+
+    if (!currentUser?.patientId) {
+      setQuickBookingError('Không tìm thấy patientId. Vui lòng đăng nhập lại.');
+      return;
+    }
+
+    setCreatingAppointment(true);
+    setQuickBookingError('');
+    setBookingSuccess(false);
+
+    try {
+      const reason = bookingReason.trim();
+      await createAppointment({
+        patientId: currentUser.patientId,
+        doctorId: selectedQuickDoctorId,
+        slotId: selectedSlotId,
+        rescheduledFromAppointmentId: null,
+        ...(reason ? { reason } : {}),
+        bookingSource: 'WEB',
+      });
+      setBookingSuccess(true);
+    } catch {
+      setQuickBookingError('Không thể tạo lịch khám. Vui lòng kiểm tra slot và thử lại.');
+    } finally {
+      setCreatingAppointment(false);
+    }
   };
+
+  const renderQuickOption = (option: QuickSelectOption, selectedValue: string) => (
+    <div className={`quick-booking-option${option.value === selectedValue ? ' is-selected' : ''}`}>
+      <span className="quick-booking-option__label">{option.label}</span>
+      {option.value === selectedValue ? <i className="pi pi-check quick-booking-option__check" aria-hidden="true" /> : null}
+    </div>
+  );
+
+  const renderQuickValue = (option: QuickSelectOption | null, placeholder: string) => (
+    <span className={`quick-booking-value${option ? '' : ' is-placeholder'}`}>{option?.label ?? placeholder}</span>
+  );
 
   const toggleFavorite = (doctorId: string) => {
     setFavoriteDoctorIds((current) =>
@@ -200,69 +412,113 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
 
           <aside className="quick-booking-card" aria-labelledby="quick-booking-title">
             <h2 id="quick-booking-title">Đặt lịch khám nhanh</h2>
+            <p className="quick-booking-card__subtitle">Chọn chuyên khoa, bác sĩ và slot khám phù hợp</p>
             <div className="quick-booking-card__field">
               <label htmlFor="quick-specialty">
-                <i className="pi pi-id-card" aria-hidden="true" />
                 Chuyên khoa
               </label>
               <Dropdown
+                className="quick-booking-card__select"
+                panelClassName="quick-booking-card__dropdown-panel"
                 inputId="quick-specialty"
                 value={selectedSpecialty}
-                options={specialtyOptions}
-                onChange={(event) => setSelectedSpecialty(event.value)}
-                placeholder="Chọn chuyên khoa"
+                options={specializationSelectOptions}
+                optionLabel="label"
+                optionValue="value"
+                itemTemplate={(option) => renderQuickOption(option, selectedSpecialty)}
+                valueTemplate={(option) =>
+                  renderQuickValue(option, loadingSpecializations ? 'Đang tải chuyên khoa...' : specializationOptions.length ? 'Chọn chuyên khoa' : 'Không có chuyên khoa')
+                }
+                onChange={(event) => setSelectedSpecialty(event.value ?? '')}
+                placeholder={loadingSpecializations ? 'Đang tải chuyên khoa...' : specializationOptions.length ? 'Chọn chuyên khoa' : 'Không có chuyên khoa'}
+                disabled={loadingSpecializations || !specializationOptions.length}
+                loading={loadingSpecializations}
               />
             </div>
             <div className="quick-booking-card__field">
-              <label htmlFor="quick-facility">
-                <i className={appIcons.location} aria-hidden="true" />
-                Địa điểm
+              <label htmlFor="quick-doctor">
+                Bác sĩ
               </label>
               <Dropdown
-                inputId="quick-facility"
-                value={selectedFacility}
-                options={facilityOptions}
-                onChange={(event) => setSelectedFacility(event.value)}
-                placeholder="Chọn bệnh viện / phòng khám"
+                className="quick-booking-card__select"
+                panelClassName="quick-booking-card__dropdown-panel"
+                inputId="quick-doctor"
+                value={selectedQuickDoctorId}
+                options={doctorOptions}
+                optionLabel="label"
+                optionValue="value"
+                itemTemplate={(option) => renderQuickOption(option, selectedQuickDoctorId)}
+                valueTemplate={(option) =>
+                  renderQuickValue(option, !selectedSpecialty ? 'Chọn chuyên khoa trước' : loadingDoctors ? 'Đang tải bác sĩ...' : doctorOptions.length ? 'Chọn bác sĩ' : 'Không có bác sĩ phù hợp')
+                }
+                onChange={(event) => setSelectedQuickDoctorId(event.value ?? '')}
+                placeholder={!selectedSpecialty ? 'Chọn chuyên khoa trước' : loadingDoctors ? 'Đang tải bác sĩ...' : doctorOptions.length ? 'Chọn bác sĩ' : 'Không có bác sĩ phù hợp'}
+                disabled={!selectedSpecialty || loadingDoctors || !doctorOptions.length}
+                loading={loadingDoctors}
               />
             </div>
             <div className="quick-booking-card__field">
-              <label htmlFor="quick-date">
-                <i className={appIcons.appointment} aria-hidden="true" />
-                Ngày khám
-              </label>
-              <Calendar inputId="quick-date" value={bookingDate} onChange={(event) => setBookingDate(event.value as Date | null)} showIcon />
-            </div>
-            <div className="quick-booking-card__field">
-              <label htmlFor="quick-time">
-                <i className="pi pi-clock" aria-hidden="true" />
-                Thời gian
+              <label htmlFor="quick-slot">
+                Slot khám
               </label>
               <Dropdown
-                inputId="quick-time"
-                value={bookingTime}
-                options={timeOptions}
-                onChange={(event) => setBookingTime(event.value)}
-                placeholder="Chọn thời gian"
+                className="quick-booking-card__select"
+                panelClassName="quick-booking-card__dropdown-panel"
+                inputId="quick-slot"
+                value={selectedSlotId}
+                options={slotOptions}
+                optionLabel="label"
+                optionValue="value"
+                itemTemplate={(option) => renderQuickOption(option, selectedSlotId)}
+                valueTemplate={(option) =>
+                  renderQuickValue(option, !selectedQuickDoctorId ? 'Chọn bác sĩ trước' : loadingSlots ? 'Đang tải slot...' : slotOptions.length ? 'Chọn slot còn trống' : 'Không có slot trống')
+                }
+                onChange={(event) => setSelectedSlotId(event.value ?? '')}
+                placeholder={!selectedQuickDoctorId ? 'Chọn bác sĩ trước' : loadingSlots ? 'Đang tải slot...' : slotOptions.length ? 'Chọn slot còn trống' : 'Không có slot trống'}
+                disabled={!selectedQuickDoctorId || loadingSlots || !slotOptions.length}
+                loading={loadingSlots}
               />
             </div>
-            {bookingSuccess ? (
+            <div className="quick-booking-card__field">
+              <label htmlFor="quick-reason">
+                Lý do khám
+              </label>
+              <InputTextarea
+                id="quick-reason"
+                className="quick-booking-card__reason"
+                value={bookingReason}
+                onChange={(event) => {
+                  setBookingReason(event.target.value);
+                  setBookingSuccess(false);
+                }}
+                placeholder="Nhập lý do khám nếu cần"
+                maxLength={500}
+                rows={3}
+                autoResize
+                disabled={creatingAppointment}
+              />
+              <span className="quick-booking-card__counter">{bookingReason.length}/500</span>
+            </div>
+            {quickBookingError ? (
+              <div className="error-message quick-booking-card__error">
+                <i className="pi pi-exclamation-triangle" aria-hidden="true" />
+                {quickBookingError}
+              </div>
+            ) : null}
+            {bookingSuccess && selectedQuickDoctor && selectedSlot ? (
               <div className="success-message quick-booking-card__success">
                 <i className="pi pi-check-circle" aria-hidden="true" />
-                Đặt khám thành công. Vui lòng kiểm tra thông tin lịch hẹn.
+                Đã chọn lịch khám với {selectedQuickDoctor.name} vào {formatSlotLabel(selectedSlot)}.
               </div>
             ) : null}
             <Button
-              label="Tìm bác sĩ phù hợp"
+              label="Đặt lịch"
               icon="pi pi-arrow-right"
               iconPos="right"
               onClick={handleSubmit}
-              disabled={!bookingReady}
+              loading={creatingAppointment}
+              disabled={!bookingReady || loadingDoctors || loadingSlots || creatingAppointment}
             />
-            <p className="quick-booking-card__note">
-              <i className="pi pi-lock" aria-hidden="true" />
-              Thông tin bảo mật <span /> Hủy miễn phí
-            </p>
           </aside>
         </section>
 
