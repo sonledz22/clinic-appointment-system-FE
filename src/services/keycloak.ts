@@ -14,13 +14,13 @@ const mockKeycloak = {
     name: 'Dr. Nguyen Van A',
     email: 'dr.nva@clinic.com'
   },
-  realmAccess: {
-    roles: ['user']
-  },
-  hasRealmRole: (_role: string) => true
+  hasRealmRole: (_role: string) => true,
+  updateToken: (minValidity?: number) => Promise.resolve(true)
 };
 
 let keycloakInstance: any = null;
+let isInitialized = USE_MOCK;
+let initializationPromise: Promise<boolean> | null = null;
 
 if (!USE_MOCK) {
   keycloakInstance = new Keycloak({
@@ -32,23 +32,51 @@ if (!USE_MOCK) {
 
 export const initKeycloak = (onAuthenticatedCallback: () => void) => {
   if (USE_MOCK) {
+    isInitialized = true;
     onAuthenticatedCallback();
     return;
   }
 
-  keycloakInstance.init({
-    onLoad: 'login-required',
-    checkLoginIframe: false,
-  }).then((authenticated: boolean) => {
-    if (authenticated) {
-      onAuthenticatedCallback();
-    } else {
-      keycloakInstance.login();
-    }
-  }).catch((err: any) => {
-    console.error('Lỗi khởi tạo Keycloak:', err);
-  });
+  if (!initializationPromise) {
+    initializationPromise = keycloakInstance.init({
+      onLoad: 'login-required',
+      checkLoginIframe: false,
+    }).then((authenticated: boolean) => {
+      isInitialized = true;
+      if (authenticated) {
+        onAuthenticatedCallback();
+      } else {
+        keycloakInstance.login();
+      }
+      return authenticated;
+    }).catch((err: any) => {
+      console.error('Lỗi khởi tạo Keycloak:', err);
+      throw err;
+    });
+  } else {
+    initializationPromise.then((authenticated: boolean) => {
+      if (authenticated) {
+        onAuthenticatedCallback();
+      }
+    }).catch((err: any) => {
+      console.error('Lỗi khởi tạo Keycloak:', err);
+    });
+  }
 };
+
+export const waitForKeycloakReady = async () => {
+  if (USE_MOCK) {
+    return true;
+  }
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+  return false;
+};
+
+export const isKeycloakInitialized = () => isInitialized;
+
+export const isAuthenticated = () => Boolean((USE_MOCK ? mockKeycloak : keycloakInstance)?.authenticated);
 
 export const doLogin = () => {
   if (USE_MOCK) return;
@@ -65,6 +93,7 @@ export const doLogout = () => {
 
 export const getToken = () => {
   if (USE_MOCK) return 'mock-token';
+  if (!isInitialized) return '';
   return keycloakInstance.token || '';
 };
 
@@ -93,6 +122,13 @@ export const getUserInfo = () => {
       id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', // UUID bác sĩ
       email: 'dr.nva@clinic.com',
       name: 'Dr. Nguyen Van A',
+    };
+  }
+  if (!isInitialized) {
+    return {
+      id: '',
+      email: '',
+      name: '',
     };
   }
   return {

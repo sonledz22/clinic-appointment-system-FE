@@ -1,6 +1,6 @@
 import axiosClient from '@/lib/axiosClient';
+import { isAuthenticated, waitForKeycloakReady } from '@/services/keycloak';
 import type { Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
-import { getUserInfo } from '@/services/keycloak';
 
 const DEFAULT_DOCTOR_IMAGE = 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=500';
 
@@ -79,22 +79,16 @@ export const deleteDoctorSlot = async (doctorId: string, slotId: string) => {
 };
 
 export const fetchMyProfile = async () => {
-  const userInfo = getUserInfo();
-  const response = await axiosClient.get<Doctor>('/doctors/me', {
-    headers: {
-      'X-User-Id': userInfo.id
-    }
-  });
+  await waitForKeycloakReady();
+  if (!isAuthenticated()) {
+    throw new Error('Keycloak is not authenticated yet');
+  }
+  const response = await axiosClient.get<Doctor>('/doctors/me');
   return response.data;
 };
 
 export const updateMyProfile = async (data: Partial<Doctor>) => {
-  const userInfo = getUserInfo();
-  const response = await axiosClient.put<Doctor>('/doctors/me', data, {
-    headers: {
-      'X-User-Id': userInfo.id
-    }
-  });
+  const response = await axiosClient.put<Doctor>('/doctors/me', data);
   return response.data;
 };
 

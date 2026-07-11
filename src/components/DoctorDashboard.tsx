@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, Calendar, CheckCircle, Clock, FileText, LogOut, RefreshCcw, Trash2, UserRound, Edit, Award, BookOpen } from 'lucide-react';
-import { doLogout, getUserInfo } from '@/services/keycloak';
+import { doLogout, getUserInfo, isAuthenticated, isKeycloakInitialized, waitForKeycloakReady } from '@/services/keycloak';
 import {
   addDoctorSlot,
   generateDoctorSlots,
@@ -59,7 +59,8 @@ const buildDefaultEndTime = (startTime: string) => {
 };
 
 const DoctorDashboard: React.FC = () => {
-  const userInfo = getUserInfo();
+  const [authReady, setAuthReady] = useState(() => isKeycloakInitialized() && isAuthenticated());
+  const [userInfo, setUserInfo] = useState(() => getUserInfo());
   const [patients, setPatients] = useState<Patient[]>(initialPatients);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
 
@@ -122,8 +123,39 @@ const DoctorDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    loadProfile();
+    let mounted = true;
+
+    const syncAuthState = async () => {
+      try {
+        await waitForKeycloakReady();
+        if (!mounted) {
+          return;
+        }
+
+        if (!isAuthenticated()) {
+          setAuthReady(false);
+          setProfileError('Phiên đăng nhập Keycloak chưa sẵn sàng.');
+          return;
+        }
+
+        setUserInfo(getUserInfo());
+        setAuthReady(true);
+      } catch (error) {
+        console.error(error);
+        if (mounted) {
+          setAuthReady(false);
+          setProfileError('Không thể khởi tạo phiên đăng nhập Keycloak.');
+        }
+      }
+    };
+
+    syncAuthState();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
+
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -145,9 +177,23 @@ const DoctorDashboard: React.FC = () => {
   });
 
   useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
+    loadProfile();
+  }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady || !userInfo.id) {
+      setLoadingDoctors(false);
+      return;
+    }
+
     let mounted = true;
 
     const loadDoctors = async () => {
+      setLoadingDoctors(true);
       try {
         const data = await fetchDoctors();
         if (!mounted) {
@@ -174,10 +220,10 @@ const DoctorDashboard: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [userInfo.id]);
+  }, [authReady, userInfo.id]);
 
   useEffect(() => {
-    if (!selectedDoctorId) {
+    if (!authReady || !selectedDoctorId) {
       setSlots([]);
       return;
     }
