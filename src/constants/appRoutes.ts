@@ -10,6 +10,7 @@ export const APP_ROUTES = {
   GUIDES: '/guides',
   DOCTOR_DASHBOARD: '/doctor',
   ADMIN: '/admin',
+  PROFILE: '/profile',
 } as const;
 
 export const PATIENT_NAV_ITEMS = [
