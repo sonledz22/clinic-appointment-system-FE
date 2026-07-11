@@ -46,6 +46,14 @@ const LoginForm = ({}: Readonly<LoginFormProps>) => {
   const fromState = (location.state as LoginLocationState | null)?.from;
   const redirectTo = `${fromState?.pathname ?? APP_ROUTES.HOME}${fromState?.search ?? ''}${fromState?.hash ?? ''}`;
 
+  const loginWithKeycloak = () => {
+    window.location.href = 'http://localhost:8080/oauth2/authorization/keycloak';
+  };
+
+  const loginWithGoogle = () => {
+    window.location.href = 'http://localhost:8080/oauth2/authorization/keycloak?idp=google';
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFieldErrors({});
@@ -152,14 +160,16 @@ const LoginForm = ({}: Readonly<LoginFormProps>) => {
           icon={<img className="login-form__google-icon" src={googleIcon} alt="" aria-hidden="true" />}
           outlined
           disabled={loading}
+          onClick={loginWithGoogle}
         />
         <Button
-          type="submit"
+          type="button"
           className="login-form__keycloak"
           label="Keycloak"
           icon={<img className="login-form__keycloak-icon" src={keycloakIcon} alt="" aria-hidden="true" />}
           outlined
           disabled={loading}
+          onClick={loginWithKeycloak}
         />
       </div>
 

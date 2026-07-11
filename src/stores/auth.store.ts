@@ -39,6 +39,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       await authService.login(data);
+      // Backend sẽ set HttpOnly cookies tự động, không cần lưu token
+      
       const user = await authService.getCurrentUser();
       set({
         user,
@@ -64,6 +66,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       await authService.logout();
+      // Backend sẽ xóa cookies
     } finally {
       set({
         user: null,
@@ -109,7 +112,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   hasRole(role) {
     const expectedRole = normalizeRole(role);
-    return get().user?.roles.some((userRole) => normalizeRole(userRole) === expectedRole) ?? false;
+    return get().user?.roles?.some((userRole) => normalizeRole(userRole) === expectedRole) ?? false;
   },
 
   hasAnyRole(roles) {

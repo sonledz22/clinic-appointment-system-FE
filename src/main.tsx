@@ -17,10 +17,8 @@ import { primeReactConfig, setupPrimeReact } from '@/config/primeReact';
 setupPrimeReact();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
     <PrimeReactProvider value={primeReactConfig}>
       <AppToast />
       <App />
     </PrimeReactProvider>
-  </React.StrictMode>,
 );

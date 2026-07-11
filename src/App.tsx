@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import LoadingScreen from '@/components/common/LoadingScreen';
 import { APP_ROUTES } from '@/constants/appRoutes';
 import { ROLES } from '@/constants/roles';
@@ -23,8 +23,18 @@ interface AuthInitializerProps {
 }
 
 const AuthInitializer = ({ children }: Readonly<AuthInitializerProps>) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   useEffect(() => {
-    const handleUnauthorized = () => useAuthStore.getState().clearUser();
+    const handleUnauthorized = () => {
+      useAuthStore.getState().clearUser();
+
+      if (location.pathname !== APP_ROUTES.LOGIN) {
+        navigate(APP_ROUTES.LOGIN, { replace: true, state: { from: location } });
+      }
+    };
+
     window.addEventListener('auth:unauthorized', handleUnauthorized);
 
     const { initialized, fetchCurrentUser } = useAuthStore.getState();
@@ -33,19 +43,21 @@ const AuthInitializer = ({ children }: Readonly<AuthInitializerProps>) => {
     }
 
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
-  }, []);
+  }, [location, navigate]);
 
   return <>{children}</>;
 };
 
 const RootRedirect: React.FC = () => {
+  const initialized = useAuthStore((state) => state.initialized);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const hasRole = useAuthStore((state) => state.hasRole);
 
-  if (hasRole(ROLES.ADMIN)) {
+  if (initialized && isAuthenticated && hasRole(ROLES.ADMIN)) {
     return <Navigate to={APP_ROUTES.ADMIN} replace />;
   }
 
-  if (hasRole(ROLES.DOCTOR)) {
+  if (initialized && isAuthenticated && hasRole(ROLES.DOCTOR)) {
     return <Navigate to={APP_ROUTES.DOCTOR_DASHBOARD} replace />;
   }
 
@@ -63,17 +75,13 @@ const App: React.FC = () => (
 
           <Route
             path={APP_ROUTES.HOME}
-            element={
-              <PrivateRoute>
-                <RootRedirect />
-              </PrivateRoute>
-            }
+            element={<RootRedirect />}
           />
 
           <Route
             path={APP_ROUTES.DOCTORS}
             element={
-              <PrivateRoute requiredRole={ROLES.USER}>
+              <PrivateRoute requiredRole={ROLES.PATIENT}>
                 <DoctorsPage />
               </PrivateRoute>
             }
@@ -82,7 +90,7 @@ const App: React.FC = () => (
           <Route
             path={APP_ROUTES.HOSPITALS}
             element={
-              <PrivateRoute requiredRole={ROLES.USER}>
+              <PrivateRoute requiredRole={ROLES.PATIENT}>
                 <HospitalsPage />
               </PrivateRoute>
             }
@@ -91,7 +99,7 @@ const App: React.FC = () => (
           <Route
             path={APP_ROUTES.CLINICS}
             element={
-              <PrivateRoute requiredRole={ROLES.USER}>
+              <PrivateRoute requiredRole={ROLES.PATIENT}>
                 <ClinicsPage />
               </PrivateRoute>
             }
@@ -100,7 +108,7 @@ const App: React.FC = () => (
           <Route
             path={APP_ROUTES.HEALTH_PACKAGES}
             element={
-              <PrivateRoute requiredRole={ROLES.USER}>
+              <PrivateRoute requiredRole={ROLES.PATIENT}>
                 <HealthPackagesPage />
               </PrivateRoute>
             }
@@ -109,7 +117,7 @@ const App: React.FC = () => (
           <Route
             path={APP_ROUTES.GUIDES}
             element={
-              <PrivateRoute requiredRole={ROLES.USER}>
+              <PrivateRoute requiredRole={ROLES.PATIENT}>
                 <GuidesPage />
               </PrivateRoute>
             }
