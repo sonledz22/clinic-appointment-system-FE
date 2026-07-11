@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, Calendar, CheckCircle, Clock, FileText, LogOut, RefreshCcw, Trash2, UserRound, Edit, Award, BookOpen } from 'lucide-react';
-import { doLogout, getUserInfo, isAuthenticated, isKeycloakInitialized, waitForKeycloakReady } from '@/services/keycloak';
+import { useNavigate } from 'react-router-dom';
+import { APP_ROUTES } from '@/constants/appRoutes';
+import { doLogout, getUserInfo, isAuthenticated as isKeycloakAuthenticated, isKeycloakInitialized, waitForKeycloakReady } from '@/services/keycloak';
 import {
   addDoctorSlot,
   generateDoctorSlots,
@@ -15,6 +17,7 @@ import {
   updateMyProfile,
 } from '@/features/doctors/services/doctorApi';
 import type { Doctor, Slot } from '@/features/doctors/types/doctor';
+import { useAuthStore } from '@/stores/auth.store';
 
 interface Patient {
   id: string;
@@ -59,8 +62,17 @@ const buildDefaultEndTime = (startTime: string) => {
 };
 
 const DoctorDashboard: React.FC = () => {
-  const [authReady, setAuthReady] = useState(() => isKeycloakInitialized() && isAuthenticated());
-  const [userInfo, setUserInfo] = useState(() => getUserInfo());
+  const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+  const [authReady, setAuthReady] = useState(() => Boolean(user) || (isKeycloakInitialized() && isKeycloakAuthenticated()));
+  const [userInfo, setUserInfo] = useState(() => {
+    const keycloakUser = getUserInfo();
+    return {
+      id: user?.userId ?? user?.id ?? keycloakUser.id,
+      name: user?.email ?? keycloakUser.name,
+    };
+  });
   const [patients, setPatients] = useState<Patient[]>(initialPatients);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
 
@@ -132,19 +144,32 @@ const DoctorDashboard: React.FC = () => {
           return;
         }
 
-        if (!isAuthenticated()) {
-          setAuthReady(false);
-          setProfileError('Phiên đăng nhập Keycloak chưa sẵn sàng.');
+        if (user) {
+          setUserInfo({
+            id: user.userId ?? user.id ?? '',
+            name: user.email ?? '',
+          });
+          setAuthReady(true);
           return;
         }
 
-        setUserInfo(getUserInfo());
-        setAuthReady(true);
+        if (isKeycloakAuthenticated()) {
+          const keycloakUser = getUserInfo();
+          setUserInfo({
+            id: keycloakUser.id,
+            name: keycloakUser.name || keycloakUser.email || '',
+          });
+          setAuthReady(true);
+          return;
+        }
+
+        setAuthReady(false);
+        setProfileError('Phiên đăng nhập chưa sẵn sàng.');
       } catch (error) {
         console.error(error);
         if (mounted) {
           setAuthReady(false);
-          setProfileError('Không thể khởi tạo phiên đăng nhập Keycloak.');
+          setProfileError('Không thể khởi tạo phiên đăng nhập.');
         }
       }
     };
@@ -154,7 +179,7 @@ const DoctorDashboard: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user]);
 
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
@@ -254,7 +279,7 @@ const DoctorDashboard: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [selectedDoctorId]);
+  }, [authReady, selectedDoctorId]);
 
   const selectedDoctor = useMemo(
     () => doctors.find((doctor) => doctor.id === selectedDoctorId) ?? null,
@@ -415,6 +440,16 @@ const DoctorDashboard: React.FC = () => {
     }
   };
 
+  const handleLogout = async () => {
+    if (user) {
+      await logout();
+      navigate(APP_ROUTES.LOGIN, { replace: true });
+      return;
+    }
+
+    doLogout();
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-700 font-sans flex flex-col w-full antialiased">
       <header className="bg-white border-b border-slate-100 sticky top-0 z-50 shadow-sm">
@@ -431,7 +466,7 @@ const DoctorDashboard: React.FC = () => {
               <p className="text-xs font-bold text-slate-700">{userInfo.name || 'Hệ thống Bác sĩ'}</p>
             </div>
             <button
-              onClick={() => doLogout()}
+              onClick={handleLogout}
               className="flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-white border border-red-200 hover:bg-red-500 hover:border-red-500 px-4 py-2.5 rounded-xl transition-all bg-white shadow-sm cursor-pointer"
             >
               <LogOut className="w-4 h-4" />

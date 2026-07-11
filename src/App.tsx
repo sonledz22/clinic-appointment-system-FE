@@ -1,12 +1,12 @@
-import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import PrivateRoute from '@/routes/PrivateRoute';
+import React, { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import LoadingScreen from '@/components/common/LoadingScreen';
 import { APP_ROUTES } from '@/constants/appRoutes';
 import { ROLES } from '@/constants/roles';
-import { getRoles } from '@/services/keycloak';
+import HomePage from '@/features/home/pages/HomePage';
+import PrivateRoute from '@/routes/PrivateRoute';
+import { useAuthStore } from '@/stores/auth.store';
 
-const HomePage = lazy(() => import('@/features/home/pages/HomePage'));
 const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
 const RegisterPage = lazy(() => import('@/features/auth/pages/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
@@ -19,28 +19,49 @@ const DoctorDashboard = lazy(() => import('@/components/DoctorDashboard'));
 const AdminPanel = lazy(() => import('@/components/AdminPanel'));
 const ProfilePage = lazy(() => import('@/features/profile/pages/ProfilePage'));
 
-// Điều hướng dựa trên vai trò người dùng sau khi đăng nhập
+interface AuthInitializerProps {
+  children: React.ReactNode;
+}
+
+const AuthInitializer = ({ children }: Readonly<AuthInitializerProps>) => {
+  useEffect(() => {
+    const handleUnauthorized = () => useAuthStore.getState().clearUser();
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+
+    const { initialized, fetchCurrentUser } = useAuthStore.getState();
+    if (!initialized) {
+      void fetchCurrentUser();
+    }
+
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, []);
+
+  return <>{children}</>;
+};
+
 const RootRedirect: React.FC = () => {
-  const roles = getRoles();
-  if (roles.includes(ROLES.ADMIN)) {
+  const hasRole = useAuthStore((state) => state.hasRole);
+
+  if (hasRole(ROLES.ADMIN)) {
     return <Navigate to={APP_ROUTES.ADMIN} replace />;
   }
-  if (roles.includes(ROLES.DOCTOR)) {
+
+  if (hasRole(ROLES.DOCTOR)) {
     return <Navigate to={APP_ROUTES.DOCTOR_DASHBOARD} replace />;
   }
+
   return <HomePage />;
 };
 
-const App: React.FC = () => {
-  return (
-    <BrowserRouter>
+const App: React.FC = () => (
+  <BrowserRouter>
+    <AuthInitializer>
       <Suspense fallback={<LoadingScreen />}>
         <Routes>
           <Route path={APP_ROUTES.LOGIN} element={<LoginPage />} />
           <Route path={APP_ROUTES.REGISTER} element={<RegisterPage />} />
           <Route path={APP_ROUTES.FORGOT_PASSWORD} element={<ForgotPasswordPage />} />
 
-          {/* Trang chủ điều hướng (Yêu cầu đăng nhập, không giới hạn vai trò) */}
           <Route
             path={APP_ROUTES.HOME}
             element={
@@ -103,8 +124,6 @@ const App: React.FC = () => {
               </PrivateRoute>
             }
           />
-
-          {/* Bác sĩ (Vai trò 'doctor') */}
           <Route
             path={APP_ROUTES.DOCTOR_DASHBOARD}
             element={
@@ -114,7 +133,6 @@ const App: React.FC = () => {
             }
           />
 
-          {/* Quản trị viên (Vai trò 'admin') */}
           <Route
             path={APP_ROUTES.ADMIN}
             element={
@@ -124,12 +142,11 @@ const App: React.FC = () => {
             }
           />
 
-          {/* Chuyển hướng các đường dẫn lạ về trang chủ */}
           <Route path="*" element={<Navigate to={APP_ROUTES.HOME} replace />} />
         </Routes>
       </Suspense>
-    </BrowserRouter>
-  );
-};
+    </AuthInitializer>
+  </BrowserRouter>
+);
 
 export default App;

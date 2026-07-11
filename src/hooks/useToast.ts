@@ -1,1 +1,3 @@
-// Placeholder for toast hook.
+import { appToast } from '@/utils/toast';
+
+export const useToast = () => appToast;

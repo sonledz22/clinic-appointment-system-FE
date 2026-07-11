@@ -1,5 +1,5 @@
 import axiosClient from '@/lib/axiosClient';
-import { isAuthenticated, waitForKeycloakReady } from '@/services/keycloak';
+import { waitForKeycloakReady } from '@/services/keycloak';
 import type { Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
 
 const DEFAULT_DOCTOR_IMAGE = 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=500';
@@ -21,19 +21,26 @@ const toDoctorCard = (doctor: Doctor): DoctorCardViewModel => ({
 });
 
 export const fetchDoctors = async (specialization?: string) => {
-  const response = await axiosClient.get<Doctor[]>('/doctors', {
+  const response = await axiosClient.get<Doctor[]>('/api/doctors', {
     params: specialization ? { specialization } : undefined,
   });
   return response.data;
 };
 
+export const fetchDoctorSpecializations = async () => {
+  const response = await axiosClient.get<string[]>('/api/doctors/specializations');
+  return response.data;
+};
+
+export const fetchDoctorsBySpecialization = async (specialization: string) => fetchDoctors(specialization);
+
 export const fetchDoctorSlots = async (doctorId: string) => {
-  const response = await axiosClient.get<Slot[]>(`/doctors/${doctorId}/slots`);
+  const response = await axiosClient.get<Slot[]>(`/api/doctors/${doctorId}/slots`);
   return response.data;
 };
 
 export const addDoctorSlot = async (doctorId: string, startTime: string, endTime: string) => {
-  const response = await axiosClient.post<Doctor>(`/doctors/${doctorId}/slots`, {
+  const response = await axiosClient.post<Doctor>(`/api/doctors/${doctorId}/slots`, {
     startTime,
     endTime,
   });
@@ -46,7 +53,7 @@ export const generateDoctorSlots = async (
   endTime: string,
   slotDurationMinutes: number = 30
 ) => {
-  const response = await axiosClient.post<Doctor>(`/doctors/${doctorId}/slots/generate`, {
+  const response = await axiosClient.post<Doctor>(`/api/doctors/${doctorId}/slots/generate`, {
     startTime,
     endTime,
     slotDurationMinutes,
@@ -55,40 +62,42 @@ export const generateDoctorSlots = async (
 };
 
 export const reserveDoctorSlot = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.post<Slot>(`/doctors/${doctorId}/slots/${slotId}/reserve`);
+  const response = await axiosClient.post<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/reserve`);
   return response.data;
 };
 
 export const releaseDoctorSlot = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.post<Slot>(`/doctors/${doctorId}/slots/${slotId}/release`);
+  const response = await axiosClient.post<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/release`);
   return response.data;
 };
 
 export const bookDoctorSlot = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.post<Slot>(`/doctors/${doctorId}/slots/${slotId}/book`);
+  const response = await axiosClient.post<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/book`);
   return response.data;
 };
 
 export const cancelDoctorSlotBooking = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.delete<Slot>(`/doctors/${doctorId}/slots/${slotId}/book`);
+  const response = await axiosClient.delete<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/book`);
   return response.data;
 };
 
 export const deleteDoctorSlot = async (doctorId: string, slotId: string) => {
-  await axiosClient.delete(`/doctors/${doctorId}/slots/${slotId}`);
+  await axiosClient.delete(`/api/doctors/${doctorId}/slots/${slotId}`);
 };
 
 export const fetchMyProfile = async () => {
-  await waitForKeycloakReady();
-  if (!isAuthenticated()) {
-    throw new Error('Keycloak is not authenticated yet');
+  try {
+    await waitForKeycloakReady();
+  } catch {
+    // Fall back to cookie/session auth when Keycloak is not active.
   }
-  const response = await axiosClient.get<Doctor>('/doctors/me');
+
+  const response = await axiosClient.get<Doctor>('/api/doctors/me');
   return response.data;
 };
 
 export const updateMyProfile = async (data: Partial<Doctor>) => {
-  const response = await axiosClient.put<Doctor>('/doctors/me', data);
+  const response = await axiosClient.put<Doctor>('/api/doctors/me', data);
   return response.data;
 };
 
