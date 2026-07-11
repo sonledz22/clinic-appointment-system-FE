@@ -28,6 +28,10 @@ const Header = ({}: Readonly<HeaderProps>) => {
   const renderAccountControls = () =>
     isAuthenticated ? (
       <>
+        <Link to={APP_ROUTES.PROFILE} className="app-header__login" onClick={() => setMobileMenuVisible(false)}>
+          <i className="pi pi-user" aria-hidden="true" />
+          <span>{user?.email ?? 'Trang cá nhân'}</span>
+        </Link>
         <div className="app-header__user-info">
           <span>Đã đăng nhập</span>
           <strong>{user?.email}</strong>

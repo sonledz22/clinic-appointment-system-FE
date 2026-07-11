@@ -17,6 +17,7 @@ const HealthPackagesPage = lazy(() => import('@/features/packages/pages/HealthPa
 const GuidesPage = lazy(() => import('@/features/guides/pages/GuidesPage'));
 const DoctorDashboard = lazy(() => import('@/components/DoctorDashboard'));
 const AdminPanel = lazy(() => import('@/components/AdminPanel'));
+const ProfilePage = lazy(() => import('@/features/profile/pages/ProfilePage'));
 
 interface AuthInitializerProps {
   children: React.ReactNode;
@@ -123,6 +124,14 @@ const App: React.FC = () => (
             }
           />
 
+          <Route
+            path={APP_ROUTES.PROFILE}
+            element={
+              <PrivateRoute requiredRole={ROLES.USER}>
+                <ProfilePage />
+              </PrivateRoute>
+            }
+          />
           <Route
             path={APP_ROUTES.DOCTOR_DASHBOARD}
             element={
