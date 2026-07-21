@@ -2,11 +2,8 @@ import axios from 'axios';
 import { type FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from 'primereact/button';
-import { Divider } from 'primereact/divider';
 import { InputText } from 'primereact/inputtext';
 import { Password } from 'primereact/password';
-import googleIcon from '@/assets/icons/icon_gg.png';
-import keycloakIcon from '@/assets/icons/icon_keycloak.png';
 import { APP_ROUTES } from '@/constants/appRoutes';
 import { getValidationFieldErrors, loginSchema } from '@/features/auth/authSchemas';
 import type { ApiErrorResponse } from '@/models/auth.model';
@@ -46,13 +43,6 @@ const LoginForm = ({}: Readonly<LoginFormProps>) => {
   const fromState = (location.state as LoginLocationState | null)?.from;
   const redirectTo = `${fromState?.pathname ?? APP_ROUTES.HOME}${fromState?.search ?? ''}${fromState?.hash ?? ''}`;
 
-  const loginWithKeycloak = () => {
-    window.location.href = 'http://localhost:8080/oauth2/authorization/keycloak';
-  };
-
-  const loginWithGoogle = () => {
-    window.location.href = 'http://localhost:8080/oauth2/authorization/keycloak?idp=google';
-  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -149,29 +139,6 @@ const LoginForm = ({}: Readonly<LoginFormProps>) => {
         disabled={loading}
       />
 
-      <Divider align="center">
-        <span>Hoặc đăng nhập với</span>
-      </Divider>
-
-      <div className="login-form__socials">
-        <Button
-          type="button"
-          label="Google"
-          icon={<img className="login-form__google-icon" src={googleIcon} alt="" aria-hidden="true" />}
-          outlined
-          disabled={loading}
-          onClick={loginWithGoogle}
-        />
-        <Button
-          type="button"
-          className="login-form__keycloak"
-          label="Keycloak"
-          icon={<img className="login-form__keycloak-icon" src={keycloakIcon} alt="" aria-hidden="true" />}
-          outlined
-          disabled={loading}
-          onClick={loginWithKeycloak}
-        />
-      </div>
 
       <p className="login-form__signup">
         Bạn chưa có tài khoản? <Link to={APP_ROUTES.REGISTER}>Đăng ký ngay</Link>

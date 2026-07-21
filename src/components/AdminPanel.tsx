@@ -11,7 +11,7 @@ interface Log {
 }
 
 const initialLogs: Log[] = [
-  { time: '23:15:02', type: 'info', message: 'Xác thực Keycloak: Đã xác thực thành công phiên làm việc của doctor-service.' },
+  { time: '23:15:02', type: 'info', message: 'Xác thực JWT nội bộ: Đã xác thực thành công phiên làm việc của doctor-service.' },
   { time: '23:15:20', type: 'info', message: 'Đồng bộ Cache: Đã đồng bộ 14 khung giờ lịch khám vào Redis cache.' },
   { time: '23:18:44', type: 'info', message: 'Gửi thông báo: Đã gửi SMS nhắc lịch cho Lịch hẹn #APP-998 (BS. Lý Thị Mỹ Dung).' }
 ];

@@ -8,10 +8,18 @@ export interface MessageResponse {
   message: string;
 }
 
+export interface AuthTokenResponse extends MessageResponse {
+  accessToken: string | null;
+  refreshToken: string | null;
+  tokenType: string;
+  expiresIn: number;
+  refreshExpiresIn: number;
+}
+
 export interface CurrentUser {
   id: string;
   userId?: string;
-  patientId?: string;
+  patientId?: string | null;
   email: string;
   roles: string[];
 }
@@ -38,7 +46,7 @@ export interface RoleResponse {
 
 export interface UserResponse {
   id: string;
-  keycloakUserId: string;
+  patientId?: string | null;
   email: string;
   fullName: string;
   phoneNumber: string | null;

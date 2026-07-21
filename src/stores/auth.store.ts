@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { create } from 'zustand';
+import { clearAuthTokens, getRefreshToken, hasStoredAuthTokens, setAuthTokens } from '@/lib/storage';
 import { authService } from '@/services/auth.service';
 import type { ApiErrorResponse, CurrentUser, LoginRequest } from '@/models/auth.model';
 
@@ -38,9 +39,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      await authService.login(data);
-      // Backend sẽ set HttpOnly cookies tự động, không cần lưu token
-      
+      const tokens = await authService.login(data);
+      setAuthTokens(tokens);
+
       const user = await authService.getCurrentUser();
       set({
         user,
@@ -50,6 +51,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error: null,
       });
     } catch (error) {
+      clearAuthTokens();
       set({
         user: null,
         isAuthenticated: false,
@@ -65,9 +67,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      await authService.logout();
-      // Backend sẽ xóa cookies
+      await authService.logout(getRefreshToken());
     } finally {
+      clearAuthTokens();
       set({
         user: null,
         isAuthenticated: false,
@@ -79,6 +81,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   async fetchCurrentUser() {
+    if (!hasStoredAuthTokens()) {
+      set({
+        user: null,
+        isAuthenticated: false,
+        loading: false,
+        initialized: true,
+        error: null,
+      });
+      return;
+    }
+
     set({ loading: true, error: null });
 
     try {
@@ -91,6 +104,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error: null,
       });
     } catch {
+      clearAuthTokens();
       set({
         user: null,
         isAuthenticated: false,
@@ -102,6 +116,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   clearUser() {
+    clearAuthTokens();
     set({
       user: null,
       isAuthenticated: false,

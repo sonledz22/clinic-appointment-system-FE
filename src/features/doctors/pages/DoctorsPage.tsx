@@ -18,11 +18,12 @@ import {
   bookDoctorSlot 
 } from '@/features/doctors/services/doctorApi';
 import type { DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
-import { getUserInfo } from '@/services/keycloak';
+import { useAuthStore } from '@/stores/auth.store';
 
 export interface DoctorsPageProps {}
 
 const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
+  const user = useAuthStore((state) => state.user);
   const [doctors, setDoctors] = useState<DoctorCardViewModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -110,9 +111,8 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
     setBookingError('');
     setLoadingSlots(true);
 
-    // Initialize user info from Keycloak
-    const currentUser = getUserInfo();
-    setPatientName(currentUser.name || '');
+    const currentUserEmail = user?.email ?? '';
+    setPatientName(currentUserEmail ? currentUserEmail.split('@')[0] : '');
     setPatientPhone('');
     setPatientSymptoms('');
 

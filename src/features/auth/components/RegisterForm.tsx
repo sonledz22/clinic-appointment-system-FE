@@ -2,10 +2,8 @@ import axios from 'axios';
 import { type FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from 'primereact/button';
-import { Divider } from 'primereact/divider';
 import { InputText } from 'primereact/inputtext';
 import { Password } from 'primereact/password';
-import googleIcon from '@/assets/icons/icon_gg.png';
 import { APP_ROUTES } from '@/constants/appRoutes';
 import { ROLES } from '@/constants/roles';
 import { getValidationFieldErrors, registerSchema } from '@/features/auth/authSchemas';
@@ -274,19 +272,6 @@ const RegisterForm = ({}: Readonly<RegisterFormProps>) => {
         disabled={submitting}
       />
 
-      <Divider align="center">
-        <span>Hoặc đăng ký với</span>
-      </Divider>
-
-      <div className="login-form__socials">
-        <Button
-          type="button"
-          label="Google"
-          icon={<img className="login-form__google-icon" src={googleIcon} alt="" aria-hidden="true" />}
-          outlined
-          disabled={submitting}
-        />
-      </div>
 
       <p className="login-form__signup">
         Bạn đã có tài khoản? <Link to={APP_ROUTES.LOGIN}>Đăng nhập</Link>

@@ -468,70 +468,6 @@
   font-size: 18px;
 }
 
-.login-form .p-divider {
-  margin: 4px 0 0;
-}
-
-.login-form .p-divider.p-divider-horizontal::before {
-  border-top-color: #E2E8F0;
-}
-
-.login-form .p-divider-content {
-  background: #FFFFFF;
-  color: var(--app-muted);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 0 18px;
-}
-
-.login-form__socials {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-}
-
-.login-form__socials .p-button.p-button-outlined {
-  width: 100%;
-  min-height: 50px;
-  justify-content: center;
-  gap: 12px;
-  padding: 0 24px;
-  border: 1px solid #D8E3F0;
-  border-radius: 9px;
-  background: #FFFFFF;
-  color: var(--app-text);
-  box-shadow: none;
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.login-form__socials .p-button.p-button-outlined .p-button-label {
-  flex: 0 0 auto;
-}
-
-.login-form__socials .p-button.p-button-outlined .p-button-icon-left {
-  margin-right: 0;
-}
-
-.login-form__socials .p-button.p-button-outlined:enabled:hover {
-  border-color: #BAE6FD;
-  background: #F8FBFF;
-  color: var(--app-text);
-}
-
-.login-form__google-icon {
-  width: 36px;
-  height: 36px;
-  object-fit: contain;
-  display: block;
-}
-
-.login-form__keycloak-icon {
-  width: 58px;
-  height: 24px;
-  object-fit: contain;
-  display: block;
-}
 
 .login-form__signup {
   margin: 0;
@@ -1748,9 +1684,7 @@
     font-size: 28px;
   }
 
-  .login-form__options,
-  .login-form__field-grid,
-  .login-form__socials {
+  .login-form__field-grid {
     grid-template-columns: 1fr;
   }
 

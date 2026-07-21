@@ -1,14 +1,19 @@
 import axiosClient from '@/api/axiosClient';
-import type { CurrentUser, LoginRequest, MessageResponse, RegisterRequest, UserResponse } from '@/models/auth.model';
+import type { AuthTokenResponse, CurrentUser, LoginRequest, MessageResponse, RegisterRequest, UserResponse } from '@/models/auth.model';
 
 export const authService = {
-  async login(data: LoginRequest): Promise<MessageResponse> {
-    const response = await axiosClient.post<MessageResponse>('/auth/login', data);
+  async login(data: LoginRequest): Promise<AuthTokenResponse> {
+    const response = await axiosClient.post<AuthTokenResponse>('/auth/login', data);
     return response.data;
   },
 
-  async logout(): Promise<MessageResponse> {
-    const response = await axiosClient.post<MessageResponse>('/auth/logout');
+  async refresh(refreshToken: string): Promise<AuthTokenResponse> {
+    const response = await axiosClient.post<AuthTokenResponse>('/auth/refresh', { refreshToken });
+    return response.data;
+  },
+
+  async logout(refreshToken?: string | null): Promise<MessageResponse> {
+    const response = await axiosClient.post<MessageResponse>('/auth/logout', { refreshToken: refreshToken ?? null });
     return response.data;
   },
 

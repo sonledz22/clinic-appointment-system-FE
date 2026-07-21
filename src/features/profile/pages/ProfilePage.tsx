@@ -8,7 +8,7 @@ import { Card } from 'primereact/card';
 import { Tag } from 'primereact/tag';
 import AppLayout from '@/components/layout/AppLayout';
 import PageHeader from '@/components/ui/PageHeader';
-import { getUserInfo } from '@/services/keycloak';
+import { useAuthStore } from '@/stores/auth.store';
 
 interface PatientProfile {
   fullName: string;
@@ -34,7 +34,12 @@ interface AppointmentHistory {
 }
 
 const ProfilePage: React.FC = () => {
-  const userInfo = getUserInfo();
+  const user = useAuthStore((state) => state.user);
+  const userInfo = {
+    id: user?.userId ?? user?.id ?? 'anonymous',
+    email: user?.email ?? '',
+    name: user?.email ? user.email.split('@')[0] : '',
+  };
   const profileKey = `patient_profile_${userInfo.id}`;
 
   const [activeTab, setActiveTab] = useState<'profile' | 'history'>('profile');

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, Calendar, CheckCircle, Clock, FileText, LogOut, RefreshCcw, Trash2, UserRound, Edit, Award, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { APP_ROUTES } from '@/constants/appRoutes';
-import { doLogout, getUserInfo, isAuthenticated as isKeycloakAuthenticated, isKeycloakInitialized, waitForKeycloakReady } from '@/services/keycloak';
 import {
   addDoctorSlot,
   generateDoctorSlots,
@@ -65,14 +64,11 @@ const DoctorDashboard: React.FC = () => {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
-  const [authReady, setAuthReady] = useState(() => Boolean(user) || (isKeycloakInitialized() && isKeycloakAuthenticated()));
-  const [userInfo, setUserInfo] = useState(() => {
-    const keycloakUser = getUserInfo();
-    return {
-      id: user?.userId ?? user?.id ?? keycloakUser.id,
-      name: user?.email ?? keycloakUser.name,
-    };
-  });
+  const [authReady, setAuthReady] = useState(() => Boolean(user));
+  const [userInfo, setUserInfo] = useState(() => ({
+    id: user?.userId ?? user?.id ?? '',
+    name: user?.email ?? '',
+  }));
   const [patients, setPatients] = useState<Patient[]>(initialPatients);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
 
@@ -135,50 +131,19 @@ const DoctorDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    let mounted = true;
+    if (user) {
+      setUserInfo({
+        id: user.userId ?? user.id ?? '',
+        name: user.email ?? '',
+      });
+      setAuthReady(true);
+      setProfileError('');
+      return;
+    }
 
-    const syncAuthState = async () => {
-      try {
-        await waitForKeycloakReady();
-        if (!mounted) {
-          return;
-        }
-
-        if (user) {
-          setUserInfo({
-            id: user.userId ?? user.id ?? '',
-            name: user.email ?? '',
-          });
-          setAuthReady(true);
-          return;
-        }
-
-        if (isKeycloakAuthenticated()) {
-          const keycloakUser = getUserInfo();
-          setUserInfo({
-            id: keycloakUser.id,
-            name: keycloakUser.name || keycloakUser.email || '',
-          });
-          setAuthReady(true);
-          return;
-        }
-
-        setAuthReady(false);
-        setProfileError('Phiên đăng nhập chưa sẵn sàng.');
-      } catch (error) {
-        console.error(error);
-        if (mounted) {
-          setAuthReady(false);
-          setProfileError('Không thể khởi tạo phiên đăng nhập.');
-        }
-      }
-    };
-
-    syncAuthState();
-
-    return () => {
-      mounted = false;
-    };
+    setUserInfo({ id: '', name: '' });
+    setAuthReady(false);
+    setProfileError('Phiên đăng nhập chưa sẵn sàng.');
   }, [user]);
 
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -441,13 +406,8 @@ const DoctorDashboard: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    if (user) {
-      await logout();
-      navigate(APP_ROUTES.LOGIN, { replace: true });
-      return;
-    }
-
-    doLogout();
+    await logout();
+    navigate(APP_ROUTES.LOGIN, { replace: true });
   };
 
   return (

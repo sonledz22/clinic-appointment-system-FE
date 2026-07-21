@@ -1,5 +1,4 @@
 import axiosClient from '@/lib/axiosClient';
-import { waitForKeycloakReady } from '@/services/keycloak';
 import type { Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
 
 const DEFAULT_DOCTOR_IMAGE = 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=500';
@@ -86,12 +85,6 @@ export const deleteDoctorSlot = async (doctorId: string, slotId: string) => {
 };
 
 export const fetchMyProfile = async () => {
-  try {
-    await waitForKeycloakReady();
-  } catch {
-    // Fall back to cookie/session auth when Keycloak is not active.
-  }
-
   const response = await axiosClient.get<Doctor>('/api/doctors/me');
   return response.data;
 };
