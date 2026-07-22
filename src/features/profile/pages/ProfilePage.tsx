@@ -60,6 +60,17 @@ const ProfilePage: React.FC = () => {
   // History state
   const [appointments, setAppointments] = useState<AppointmentHistory[]>([]);
 
+  const loadAppointments = () => {
+    const savedAppts = localStorage.getItem('patient_appointments');
+    if (savedAppts) {
+      try {
+        setAppointments(JSON.parse(savedAppts));
+      } catch (e) {
+        console.error('Error parsing appointments', e);
+      }
+    }
+  };
+
   // Load profile and history from localStorage
   useEffect(() => {
     const savedProfile = localStorage.getItem(profileKey);
@@ -75,15 +86,18 @@ const ProfilePage: React.FC = () => {
       }
     }
 
-    const savedAppts = localStorage.getItem('patient_appointments');
-    if (savedAppts) {
-      try {
-        setAppointments(JSON.parse(savedAppts));
-      } catch (e) {
-        console.error('Error parsing appointments', e);
-      }
-    }
-  }, [profileKey]);
+    loadAppointments();
+  }, [profileKey, activeTab]);
+
+  useEffect(() => {
+    const handleSync = () => loadAppointments();
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('focus', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
+  }, []);
 
   const genderOptions = [
     { label: 'Nam', value: 'Nam' },
@@ -316,7 +330,15 @@ const ProfilePage: React.FC = () => {
                     {/* Appointment details */}
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <Tag value="Đã xác nhận" severity="success" className="rounded" />
+                        {appt.status === 'CANCELLED_BY_DOCTOR' ? (
+                          <Tag value="Bác sĩ đã hủy" severity="danger" className="rounded" />
+                        ) : appt.status === 'CANCELLED' ? (
+                          <Tag value="Đã hủy" severity="danger" className="rounded" />
+                        ) : appt.status === 'CONFIRMED' ? (
+                          <Tag value="Đã xác nhận" severity="success" className="rounded" />
+                        ) : (
+                          <Tag value="Chờ bác sĩ xác nhận" severity="warning" className="rounded" />
+                        )}
                         <span className="text-xs text-gray-400">Đặt lúc: {new Date(appt.createdAt).toLocaleString('vi-VN')}</span>
                       </div>
                       <h4 className="text-lg font-bold text-gray-900 m-0">Bác sĩ: {appt.doctorName}</h4>
@@ -334,6 +356,11 @@ const ProfilePage: React.FC = () => {
                         {appt.patientSymptoms && (
                           <div className="italic text-gray-500 mt-1">
                             "Triệu chứng: {appt.patientSymptoms}"
+                          </div>
+                        )}
+                        {(appt as any).cancelReason && (
+                          <div className="mt-1 text-xs font-semibold text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                            Lý do bác sĩ hủy: {(appt as any).cancelReason}
                           </div>
                         )}
                       </div>

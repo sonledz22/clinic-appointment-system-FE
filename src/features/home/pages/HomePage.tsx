@@ -10,9 +10,8 @@ import AppLayout from '@/components/layout/AppLayout';
 import { appIcons } from '@/constants/appIcons';
 import { APP_ROUTES } from '@/constants/appRoutes';
 import { createAppointment } from '@/features/appointments/services/appointmentApi';
-import { fetchDoctorSlots, fetchDoctorSpecializations, fetchDoctorsBySpecialization } from '@/features/doctors/services/doctorApi';
-import type { Doctor, Slot } from '@/features/doctors/types/doctor';
-import { doctors, type DoctorMock } from '@/mocks/doctors';
+import { fetchDoctorSlots, fetchDoctorSpecializations, fetchDoctors, fetchDoctorsBySpecialization, mapDoctorToCard } from '@/features/doctors/services/doctorApi';
+import type { Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
 import { hospitals } from '@/mocks/hospitals';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -65,7 +64,7 @@ const trustedProviders = [
     name: 'Phòng khám Tâm Đức',
     area: 'TP. Hồ Chí Minh',
     rating: 4.7,
-    image: doctors[0]?.image,
+    image: hospitals[1]?.image,
   },
 ];
 
@@ -122,8 +121,10 @@ const formatSlotLabel = (slot: Slot) => {
 };
 
 const HomePage = ({}: Readonly<HomePageProps>) => {
+  const today = new Date().toISOString().slice(0, 10);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDoctor, setSelectedDoctor] = useState<DoctorMock>(doctors[0]);
+  const [selectedDoctor, setSelectedDoctor] = useState<DoctorCardViewModel | null>(null);
+  const [featuredDoctorsSource, setFeaturedDoctorsSource] = useState<DoctorCardViewModel[]>([]);
   const [specializationOptions, setSpecializationOptions] = useState<string[]>([]);
   const [quickDoctors, setQuickDoctors] = useState<Doctor[]>([]);
   const [doctorSlots, setDoctorSlots] = useState<Slot[]>([]);
@@ -134,11 +135,37 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
   const [loadingSpecializations, setLoadingSpecializations] = useState(false);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [loadingFeaturedDoctors, setLoadingFeaturedDoctors] = useState(false);
   const [creatingAppointment, setCreatingAppointment] = useState(false);
   const [quickBookingError, setQuickBookingError] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [favoriteDoctorIds, setFavoriteDoctorIds] = useState<string[]>([]);
   const currentUser = useAuthStore((state) => state.user);
+
+  useEffect(() => {
+    let isActive = true;
+
+    setLoadingFeaturedDoctors(true);
+    fetchDoctors()
+      .then((backendDoctors) => {
+        if (!isActive) return;
+        const mappedDoctors = backendDoctors.map(mapDoctorToCard);
+        setFeaturedDoctorsSource(mappedDoctors);
+        setSelectedDoctor(mappedDoctors[0] ?? null);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setQuickBookingError('Không thể tải danh sách bác sĩ nổi bật.');
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setLoadingFeaturedDoctors(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -214,7 +241,10 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     }
 
     setLoadingSlots(true);
-    fetchDoctorSlots(selectedQuickDoctorId)
+    fetchDoctorSlots(selectedQuickDoctorId, {
+      fromDate: today,
+      status: 'AVAILABLE',
+    })
       .then((slots) => {
         if (!isActive) return;
         setDoctorSlots(slots);
@@ -231,18 +261,18 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     return () => {
       isActive = false;
     };
-  }, [selectedQuickDoctorId]);
+  }, [selectedQuickDoctorId, today]);
 
   const featuredDoctors = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
-    if (!keyword) return doctors.slice(0, 4);
+    if (!keyword) return featuredDoctorsSource.slice(0, 4);
 
-    const matches = doctors.filter((doctor) =>
+    const matches = featuredDoctorsSource.filter((doctor) =>
       [doctor.name, doctor.specialty, doctor.workplace, doctor.area].some((value) => value.toLowerCase().includes(keyword))
     );
 
-    return matches.length ? matches.slice(0, 4) : doctors.slice(0, 4);
-  }, [searchTerm]);
+    return matches.length ? matches.slice(0, 4) : featuredDoctorsSource.slice(0, 4);
+  }, [featuredDoctorsSource, searchTerm]);
 
   const specializationSelectOptions = useMemo(
     () =>
@@ -267,7 +297,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
   const slotOptions = useMemo(
     () =>
       [...doctorSlots]
-        .filter((slot) => !slot.booked)
+        .filter((slot) => !slot.booked && slot.status !== 'BOOKED' && slot.status !== 'RESERVED' && slot.status !== 'BLOCKED')
         .sort((firstSlot, secondSlot) => new Date(firstSlot.startTime).getTime() - new Date(secondSlot.startTime).getTime())
         .map((slot) => ({
           label: formatSlotLabel(slot),
@@ -288,7 +318,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
 
   const bookingReady = Boolean(selectedSpecialty && selectedQuickDoctorId && selectedSlotId);
 
-  const handleBook = (doctor: DoctorMock) => {
+  const handleBook = (doctor: DoctorCardViewModel) => {
     setSelectedDoctor(doctor);
     if (specializationOptions.includes(doctor.specialty)) {
       setSelectedSpecialty(doctor.specialty);
@@ -385,7 +415,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
             <div className="home-hero__visual-orbit home-hero__visual-orbit--outer" />
             <div className="home-hero__visual-orbit home-hero__visual-orbit--inner" />
             <div className="home-hero__doctor-frame">
-              <AppImage className="home-hero__doctor-image" src={selectedDoctor.image} alt="Bác sĩ Đặtkhámnhanh" fallbackLabel="Bác sĩ" />
+              <AppImage className="home-hero__doctor-image" src={selectedDoctor?.image} alt="Bác sĩ Đặtkhámnhanh" fallbackLabel={selectedDoctor?.name || 'Bác sĩ'} />
             </div>
             <div className="home-hero__floating home-hero__floating--check">
               <i className="pi pi-check" aria-hidden="true" />
@@ -508,7 +538,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
             {bookingSuccess && selectedQuickDoctor && selectedSlot ? (
               <div className="success-message quick-booking-card__success">
                 <i className="pi pi-check-circle" aria-hidden="true" />
-                Đã chọn lịch khám với {selectedQuickDoctor.name} vào {formatSlotLabel(selectedSlot)}.
+                Đã gửi yêu cầu đặt lịch với {selectedQuickDoctor.name} vào {formatSlotLabel(selectedSlot)}. Lịch đang chờ bác sĩ xác nhận.
               </div>
             ) : null}
             <Button
@@ -529,7 +559,11 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
               <Link to={APP_ROUTES.DOCTORS}>Xem tất cả</Link>
             </div>
             <div className="home-doctor-grid">
-              {featuredDoctors.map((doctor) => {
+              {loadingFeaturedDoctors ? (
+                <div className="col-span-full rounded-3xl border border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm font-semibold text-slate-500">
+                  Đang tải bác sĩ nổi bật từ doctor-service...
+                </div>
+              ) : featuredDoctors.map((doctor) => {
                 const isFavorite = favoriteDoctorIds.includes(doctor.id);
 
                 return (
