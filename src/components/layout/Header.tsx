@@ -5,6 +5,7 @@ import { Sidebar as PrimeSidebar } from 'primereact/sidebar';
 import Sidebar from '@/components/layout/Sidebar';
 import { appIcons } from '@/constants/appIcons';
 import { APP_ROUTES, PATIENT_NAV_ITEMS } from '@/constants/appRoutes';
+import { ROLES } from '@/constants/roles';
 import { useAuthStore } from '@/stores/auth.store';
 
 export interface HeaderProps {}
@@ -16,8 +17,10 @@ const Header = ({}: Readonly<HeaderProps>) => {
   const user = useAuthStore((state) => state.user);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const logout = useAuthStore((state) => state.logout);
+  const hasRole = useAuthStore((state) => state.hasRole);
 
   const isActive = (path: string) => (path === APP_ROUTES.HOME ? location.pathname === path : location.pathname.startsWith(path));
+  const accountRoute = hasRole(ROLES.DOCTOR) ? APP_ROUTES.DOCTOR_DASHBOARD : APP_ROUTES.PROFILE;
 
   const handleLogout = async () => {
     await logout();
@@ -28,7 +31,7 @@ const Header = ({}: Readonly<HeaderProps>) => {
   const renderAccountControls = () =>
     isAuthenticated ? (
       <>
-        <Link to={APP_ROUTES.PROFILE} className="app-header__login" onClick={() => setMobileMenuVisible(false)}>
+        <Link to={accountRoute} className="app-header__login" onClick={() => setMobileMenuVisible(false)}>
           <i className="pi pi-user" aria-hidden="true" />
           <span>{user?.email ?? 'Trang cá nhân'}</span>
         </Link>

@@ -9,13 +9,12 @@ import PageHeader from '@/components/ui/PageHeader';
 import SearchBar from '@/components/ui/SearchBar';
 import EmptyState from '@/components/ui/EmptyState';
 import DoctorCard from '@/features/doctors/components/DoctorCard';
+import { createAppointment } from '@/features/appointments/services/appointmentApi';
 import AppImage from '@/components/common/AppImage';
 import { 
   fetchDoctors, 
   mapDoctorToCard, 
-  fetchDoctorSlots, 
-  reserveDoctorSlot, 
-  bookDoctorSlot 
+  fetchDoctorSlots
 } from '@/features/doctors/services/doctorApi';
 import type { DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
 import { useAuthStore } from '@/stores/auth.store';
@@ -23,6 +22,7 @@ import { useAuthStore } from '@/stores/auth.store';
 export interface DoctorsPageProps {}
 
 const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
+  const today = new Date().toISOString().slice(0, 10);
   const user = useAuthStore((state) => state.user);
   const [doctors, setDoctors] = useState<DoctorCardViewModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,7 +117,9 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
     setPatientSymptoms('');
 
     try {
-      const data = await fetchDoctorSlots(doctor.id);
+      const data = await fetchDoctorSlots(doctor.id, {
+        fromDate: today,
+      });
       setSlots(data);
     } catch {
       setBookingError('Không thể tải danh sách khung giờ khám của bác sĩ.');
@@ -162,20 +164,28 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
       setBookingError('Vui lòng nhập đầy đủ Họ tên và Số điện thoại.');
       return;
     }
+    if (!user?.patientId) {
+      setBookingError('Không tìm thấy hồ sơ bệnh nhân. Vui lòng đăng nhập lại bằng tài khoản bệnh nhân.');
+      return;
+    }
 
     setBookingInProgress(true);
     setBookingError('');
 
     try {
-      // 1. Reserve the slot
-      await reserveDoctorSlot(selectedDoctor.id, selectedSlot.id);
-      
-      // 2. Book the slot
-      await bookDoctorSlot(selectedDoctor.id, selectedSlot.id);
-      
-      // 3. Save to localStorage for patient profile history
+      const createdAppointment = await createAppointment({
+        patientId: user.patientId,
+        doctorId: selectedDoctor.id,
+        slotId: selectedSlot.id,
+        rescheduledFromAppointmentId: null,
+        reason: patientSymptoms.trim() || undefined,
+        bookingSource: 'WEB',
+      });
+
       const newAppointment = {
-        id: selectedSlot.id,
+        id: createdAppointment.id,
+        appointmentId: createdAppointment.id,
+        slotId: selectedSlot.id,
         doctorName: selectedDoctor.name,
         specialty: selectedDoctor.specialty,
         startTime: selectedSlot.startTime,
@@ -183,8 +193,8 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
         patientName,
         patientPhone,
         patientSymptoms,
-        status: 'CONFIRMED',
-        createdAt: new Date().toISOString(),
+        status: createdAppointment.status || 'PENDING_DOCTOR_CONFIRMATION',
+        createdAt: createdAppointment.createdAt || new Date().toISOString(),
       };
       const existingAppts = JSON.parse(localStorage.getItem('patient_appointments') || '[]');
       localStorage.setItem('patient_appointments', JSON.stringify([newAppointment, ...existingAppts]));
@@ -192,7 +202,9 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
       setBookingSuccess(true);
       
       // Refresh the slots list
-      const updatedSlots = await fetchDoctorSlots(selectedDoctor.id);
+      const updatedSlots = await fetchDoctorSlots(selectedDoctor.id, {
+        fromDate: today,
+      });
       setSlots(updatedSlots);
       setSelectedSlot(null);
     } catch (err: any) {
@@ -385,7 +397,7 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
                     <i className="pi pi-check-circle text-lg" />
                     <div>
                       <div>Đặt lịch khám thành công!</div>
-                      <div className="text-xs font-normal text-gray-600 mt-1">Lịch khám của bạn đã được ghi nhận trên hệ thống.</div>
+                      <div className="text-xs font-normal text-gray-600 mt-1">Lịch khám của bạn đang chờ bác sĩ xác nhận.</div>
                     </div>
                   </div>
                 )}

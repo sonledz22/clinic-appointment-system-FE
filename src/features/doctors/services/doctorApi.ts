@@ -1,5 +1,17 @@
 import axiosClient from '@/lib/axiosClient';
-import type { Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
+import type {
+  Doctor,
+  DoctorAppointmentContext,
+  DoctorCancelAppointmentPayload,
+  DoctorCardViewModel,
+  DoctorCheckoutPayload,
+  DoctorLeave,
+  DoctorScheduleAppointment,
+  GenerateRecurringSchedulePayload,
+  RequestDoctorLeavePayload,
+  Slot,
+  SlotFilters,
+} from '@/features/doctors/types/doctor';
 
 const DEFAULT_DOCTOR_IMAGE = 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=500';
 
@@ -33,8 +45,17 @@ export const fetchDoctorSpecializations = async () => {
 
 export const fetchDoctorsBySpecialization = async (specialization: string) => fetchDoctors(specialization);
 
-export const fetchDoctorSlots = async (doctorId: string) => {
-  const response = await axiosClient.get<Slot[]>(`/api/doctors/${doctorId}/slots`);
+export const fetchDoctorSlots = async (doctorId: string, filters?: SlotFilters) => {
+  const response = await axiosClient.get<Slot[]>(`/api/doctors/${doctorId}/slots`, {
+    params: filters,
+  });
+  return response.data;
+};
+
+export const fetchMySlots = async (filters?: SlotFilters) => {
+  const response = await axiosClient.get<Slot[]>('/api/doctors/me/slots', {
+    params: filters,
+  });
   return response.data;
 };
 
@@ -57,6 +78,16 @@ export const generateDoctorSlots = async (
     endTime,
     slotDurationMinutes,
   });
+  return response.data;
+};
+
+export const generateDoctorRecurringSlots = async (doctorId: string, payload: GenerateRecurringSchedulePayload) => {
+  const response = await axiosClient.post<Doctor>(`/api/doctors/${doctorId}/slots/generate-recurring`, payload);
+  return response.data;
+};
+
+export const generateMyRecurringSlots = async (payload: GenerateRecurringSchedulePayload) => {
+  const response = await axiosClient.post<Doctor>('/api/doctors/me/slots/generate-recurring', payload);
   return response.data;
 };
 
@@ -91,6 +122,62 @@ export const fetchMyProfile = async () => {
 
 export const updateMyProfile = async (data: Partial<Doctor>) => {
   const response = await axiosClient.put<Doctor>('/api/doctors/me', data);
+  return response.data;
+};
+
+export const fetchMyLeaves = async () => {
+  const response = await axiosClient.get<DoctorLeave[]>('/api/doctors/me/leaves');
+  return response.data;
+};
+
+export const requestDoctorLeave = async (payload: RequestDoctorLeavePayload) => {
+  const response = await axiosClient.post<DoctorLeave>('/api/doctors/me/leaves', payload);
+  return response.data;
+};
+
+export const cancelDoctorLeave = async (leaveId: string) => {
+  await axiosClient.delete(`/api/doctors/me/leaves/${leaveId}`);
+};
+
+export const fetchDoctorAppointmentContext = async (appointmentId: string) => {
+  const response = await axiosClient.get<DoctorAppointmentContext>(`/api/doctor/appointments/${appointmentId}/consultation-context`);
+  return response.data;
+};
+
+export const fetchDoctorSlotConsultationContext = async (slotId: string) => {
+  const response = await axiosClient.get<DoctorAppointmentContext>(`/api/doctor/appointments/slot/${slotId}/consultation-context`);
+  return response.data;
+};
+
+export const fetchDoctorAppointments = async (fromDate: string, toDate: string) => {
+  const response = await axiosClient.get<DoctorScheduleAppointment[]>('/api/doctor/appointments', {
+    params: { fromDate, toDate },
+  });
+  return response.data;
+};
+
+export const confirmDoctorAppointment = async (appointmentId: string) => {
+  const response = await axiosClient.post(`/api/doctor/appointments/${appointmentId}/confirm`);
+  return response.data;
+};
+
+export const checkInDoctorAppointment = async (appointmentId: string) => {
+  const response = await axiosClient.post(`/api/doctor/appointments/${appointmentId}/check-in`);
+  return response.data;
+};
+
+export const markDoctorAppointmentNotCheckIn = async (appointmentId: string) => {
+  const response = await axiosClient.post(`/api/doctor/appointments/${appointmentId}/not-checkin`);
+  return response.data;
+};
+
+export const cancelDoctorAppointment = async (appointmentId: string, payload: DoctorCancelAppointmentPayload) => {
+  const response = await axiosClient.post(`/api/doctor/appointments/${appointmentId}/cancel`, payload);
+  return response.data;
+};
+
+export const checkoutDoctorAppointment = async (appointmentId: string, payload: DoctorCheckoutPayload) => {
+  const response = await axiosClient.post(`/api/doctor/appointments/${appointmentId}/checkout`, payload);
   return response.data;
 };
 

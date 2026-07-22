@@ -1,81 +1,129 @@
-import React, { useState } from 'react';
-import { Server, Activity, Cpu, ShieldAlert, LogOut, CheckCircle, RefreshCw, Layers } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Activity, CalendarRange, LogOut, Search, ShieldCheck, Stethoscope, UsersRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { APP_ROUTES } from '@/constants/appRoutes';
+import { fetchDoctorSlots, fetchDoctors, fetchDoctorSpecializations, mapDoctorToCard } from '@/features/doctors/services/doctorApi';
+import type { Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
 import { useAuthStore } from '@/stores/auth.store';
 
-interface Log {
-  time: string;
-  type: 'info' | 'warning';
-  message: string;
-}
+const formatDateTime = (value: string) =>
+  new Date(value).toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
-const initialLogs: Log[] = [
-  { time: '23:15:02', type: 'info', message: 'Xác thực JWT nội bộ: Đã xác thực thành công phiên làm việc của doctor-service.' },
-  { time: '23:15:20', type: 'info', message: 'Đồng bộ Cache: Đã đồng bộ 14 khung giờ lịch khám vào Redis cache.' },
-  { time: '23:18:44', type: 'info', message: 'Gửi thông báo: Đã gửi SMS nhắc lịch cho Lịch hẹn #APP-998 (BS. Lý Thị Mỹ Dung).' }
-];
+const buildSlotSummary = (slots: Slot[]) => {
+  const summary = {
+    total: slots.length,
+    available: 0,
+    booked: 0,
+    reserved: 0,
+    blocked: 0,
+  };
 
-interface SimLog {
-  time: string;
-  text: string;
-}
+  slots.forEach((slot) => {
+    const status = slot.status || (slot.booked ? 'BOOKED' : 'AVAILABLE');
+    if (status === 'AVAILABLE') summary.available += 1;
+    if (status === 'BOOKED') summary.booked += 1;
+    if (status === 'RESERVED') summary.reserved += 1;
+    if (status === 'BLOCKED') summary.blocked += 1;
+  });
 
-const AdminPanel: React.FC = () => {
+  return summary;
+};
+
+const AdminPanel = () => {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
-  const [logs, setLogs] = useState<Log[]>(initialLogs);
-  const [simRunning, setSimRunning] = useState(false);
-  const [simStep, setSimStep] = useState(0);
-  const [simLogs, setSimLogs] = useState<SimLog[]>([]);
 
-  const [stats, setStats] = useState({
-    todayAppts: 48,
-    activeDocs: '12/15',
-    pendingNotifs: 3,
-    conflictsPrevented: 142
-  });
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [specializations, setSpecializations] = useState<string[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
+  const [selectedDoctorSlots, setSelectedDoctorSlots] = useState<Slot[]>([]);
+  const [loadingDoctors, setLoadingDoctors] = useState(true);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [specializationFilter, setSpecializationFilter] = useState('');
+  const [error, setError] = useState('');
 
-  const runSimulation = () => {
-    if (simRunning) return;
-    setSimRunning(true);
-    setSimStep(1);
-    setSimLogs([]);
+  const today = new Date().toISOString().slice(0, 10);
 
-    const steps = [
-      { step: 1, log: '⚡ Nhận yêu cầu: Gateway phát hiện 2 yêu cầu đặt lịch trùng khung giờ của BS. Mỹ Dung (25/06 - 10:30).', delay: 800 },
-      { step: 2, log: '🧵 Phân phối luồng: Luồng A (Bệnh nhân Nguyễn Hải) và Luồng B (Bệnh nhân Trần Mai) gửi tới Appointment Service.', delay: 1500 },
-      { step: 3, log: '🔒 Khởi tạo Khóa: Gọi acquireLock("lock:doctor:1:2026-06-25:10:30") trên Redis Cluster (Redisson).', delay: 2200 },
-      { step: 4, log: '✅ Cấp khóa thành công: Luồng A chiếm được khóa Redis. Luồng B bị chặn khóa, chuyển sang chế độ đợi thử lại.', delay: 3000 },
-      { step: 5, log: '🗄️ Lưu cơ sở dữ liệu: Luồng A xác nhận chỗ trống, lưu lịch hẹn #APP-7712. Kích hoạt sự kiện AppointmentBookedEvent.', delay: 3800 },
-      { step: 6, log: '🔓 Giải phóng khóa: Luồng A hoàn tất giao dịch và mở khóa Redis.', delay: 4500 },
-      { step: 7, log: '🔄 Thử lại khóa: Luồng B lấy được khóa sau giải phóng, kiểm tra dữ liệu trạng thái: ĐÃ ĐẶT.', delay: 5300 },
-      { step: 8, log: '🛑 Phát hiện xung đột: Tiến trình Luồng B bị hủy bỏ. Trả về DoubleBookingException. Hủy giao dịch an toàn.', delay: 6000 },
-      { step: 9, log: '⚠️ Phản hồi Client: Trả về mã 201 Thành công cho Luồng A, và 409 Xung đột (Đã có lịch hẹn) cho Luồng B.', delay: 6800 }
-    ];
-
-    steps.forEach((s) => {
-      setTimeout(() => {
-        setSimStep(s.step);
-        setSimLogs(prev => [...prev, { time: new Date().toLocaleTimeString('vi-VN'), text: s.log }]);
-
-        if (s.step === 9) {
-          setSimRunning(false);
-          setStats(prev => ({
-            ...prev,
-            todayAppts: prev.todayAppts + 1,
-            conflictsPrevented: prev.conflictsPrevented + 1
-          }));
-
-          setLogs(prev => [
-            { time: new Date().toLocaleTimeString('vi-VN'), type: 'warning', message: 'Ngăn chặn đặt lịch trùng: Đã giải quyết xung đột đặt lịch trùng bằng khóa phân tán Redisson thành công.' },
-            ...prev
-          ]);
-        }
-      }, s.delay);
-    });
+  const loadDoctors = async () => {
+    setLoadingDoctors(true);
+    try {
+      const [doctorData, specializationData] = await Promise.all([
+        fetchDoctors(),
+        fetchDoctorSpecializations(),
+      ]);
+      setDoctors(doctorData);
+      setSpecializations(specializationData);
+      setSelectedDoctorId((current) => current || doctorData[0]?.id || '');
+      setError('');
+    } catch (loadError: any) {
+      setError(loadError?.response?.data?.message || 'Không thể tải dữ liệu quản trị bác sĩ.');
+    } finally {
+      setLoadingDoctors(false);
+    }
   };
+
+  const loadSlots = async (doctorId: string) => {
+    if (!doctorId) {
+      setSelectedDoctorSlots([]);
+      return;
+    }
+    setLoadingSlots(true);
+    try {
+      const slots = await fetchDoctorSlots(doctorId, {
+        fromDate: today,
+      });
+      setSelectedDoctorSlots(slots);
+      setError('');
+    } catch (loadError: any) {
+      setError(loadError?.response?.data?.message || 'Không thể tải lịch bác sĩ đã chọn.');
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDoctors();
+  }, []);
+
+  useEffect(() => {
+    void loadSlots(selectedDoctorId);
+  }, [selectedDoctorId]);
+
+  const filteredDoctors = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+    return doctors.filter((doctor) => {
+      const matchesKeyword =
+        !keyword ||
+        [doctor.name, doctor.specialization, doctor.email, doctor.phoneNumber]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(keyword));
+
+      const matchesSpecialization = !specializationFilter || doctor.specialization === specializationFilter;
+
+      return matchesKeyword && matchesSpecialization;
+    });
+  }, [doctors, searchTerm, specializationFilter]);
+
+  const selectedDoctor = useMemo(
+    () => doctors.find((doctor) => doctor.id === selectedDoctorId) || null,
+    [doctors, selectedDoctorId],
+  );
+
+  const selectedDoctorCard = useMemo<DoctorCardViewModel | null>(
+    () => (selectedDoctor ? mapDoctorToCard(selectedDoctor) : null),
+    [selectedDoctor],
+  );
+
+  const activeDoctors = doctors.filter((doctor) => doctor.active).length;
+  const slotSummary = useMemo(() => buildSlotSummary(selectedDoctorSlots), [selectedDoctorSlots]);
 
   const handleLogout = async () => {
     await logout();
@@ -83,183 +131,205 @@ const AdminPanel: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-slate-700 font-sans flex flex-col w-full antialiased">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-100 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-rose-500 to-red-650 flex items-center justify-center text-white shadow-md shadow-rose-500/10">
-              <Layers className="w-5.5 h-5.5" />
+    <div className="min-h-screen bg-[linear-gradient(180deg,_#fff7ed_0%,_#fff_22%,_#f8fafc_100%)] text-slate-800">
+      <header className="sticky top-0 z-40 border-b border-white/80 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-rose-600 text-white shadow-lg shadow-orange-500/20">
+              <ShieldCheck className="h-6 w-6" />
             </div>
-            <span className="text-xl font-extrabold text-slate-800 tracking-tight font-display">Quản trị viên - Đặtkhámnhanh</span>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-orange-500">Admin Console</p>
+              <h1 className="text-2xl font-black tracking-tight">Quản trị dữ liệu bác sĩ</h1>
+            </div>
           </div>
-          <div className="flex items-center gap-5">
-            <div className="text-right">
-              <p className="text-[11px] text-slate-400 font-medium">Vai trò: Admin</p>
-              <p className="text-xs font-bold text-slate-700">{user?.email || 'Người quản trị'}</p>
-            </div>
+
+          <div className="flex items-center gap-3">
             <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-white border border-red-200 hover:bg-red-500 hover:border-red-500 px-4 py-2.5 rounded-xl transition-all-300 bg-white shadow-sm cursor-pointer"
+              type="button"
+              onClick={() => void loadDoctors()}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
             >
-              <LogOut className="w-4 h-4" />
-              <span>Đăng xuất</span>
+              Làm mới dữ liệu
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white"
+            >
+              <LogOut className="h-4 w-4" />
+              Đăng xuất
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl mx-auto px-8 py-10 w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* Top Statistics Bar */}
-        <section className="lg:col-span-12 grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-premium">
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Lịch hẹn hôm nay</span>
-            <p className="text-2xl font-black text-[#007BFF] mt-1.5">{stats.todayAppts}</p>
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8 lg:px-8">
+        {error ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</div>
+        ) : null}
+
+        <section className="grid gap-4 md:grid-cols-4">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+              <UsersRound className="h-5 w-5" />
+            </div>
+            <p className="text-3xl font-black">{doctors.length}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Tổng bác sĩ</p>
           </div>
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-premium">
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Bác sĩ hoạt động</span>
-            <p className="text-2xl font-black text-emerald-500 mt-1.5">{stats.activeDocs}</p>
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+              <Activity className="h-5 w-5" />
+            </div>
+            <p className="text-3xl font-black">{activeDoctors}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Đang hoạt động</p>
           </div>
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-premium">
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">RabbitMQ Queue</span>
-            <p className="text-2xl font-black text-amber-500 mt-1.5">{stats.pendingNotifs}</p>
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
+              <Stethoscope className="h-5 w-5" />
+            </div>
+            <p className="text-3xl font-black">{specializations.length}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Chuyên khoa</p>
           </div>
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-premium">
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Xung đột ngăn chặn (Redis)</span>
-            <p className="text-2xl font-black text-rose-500 mt-1.5">{stats.conflictsPrevented}</p>
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+              <CalendarRange className="h-5 w-5" />
+            </div>
+            <p className="text-3xl font-black">{slotSummary.total}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Slot tương lai của bác sĩ đang xem</p>
           </div>
         </section>
 
-        {/* Distributed Lock Simulation (7 cols) */}
-        <section className="lg:col-span-7 bg-white border border-slate-100 rounded-3xl p-6.5 shadow-premium flex flex-col">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2 font-display">
-                <Cpu className="w-5 h-5 text-[#007BFF]" />
-                Giả lập Đặt trùng (Distributed Lock Redisson)
-              </h2>
-              <p className="text-xs text-slate-400 mt-1 font-semibold">Bấm nút để mô phỏng 2 bệnh nhân cùng lúc đặt trùng khung giờ bác sĩ.</p>
+        <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">Directory</p>
+                <h2 className="mt-2 text-xl font-black">Danh sách bác sĩ từ backend</h2>
+              </div>
             </div>
-            <button
-              onClick={runSimulation}
-              disabled={simRunning}
-              className={`text-xs font-bold py-2.5 px-4 rounded-xl transition-all-300 shadow-sm cursor-pointer ${
-                simRunning 
-                  ? 'bg-slate-100 text-slate-400 border border-slate-200/50 cursor-not-allowed' 
-                  : 'bg-gradient-to-r from-[#007BFF] to-[#0056b3] hover:from-[#0056b3] hover:to-[#004085] text-white shadow-[#007BFF]/10'
-              }`}
-            >
-              Chạy mô phỏng
-            </button>
-          </div>
 
-          <div className="bg-[#F8F9FA] border border-slate-150 rounded-2xl p-5 flex-1 min-h-[320px] flex flex-col justify-between">
-            {simStep === 0 ? (
-              <div className="text-center py-14 space-y-3.5 my-auto">
-                <ShieldAlert className="w-12 h-12 text-slate-350 mx-auto" />
-                <h3 className="text-sm font-extrabold text-slate-700">Trạng thái: Sẵn sàng thử nghiệm</h3>
-                <p className="text-xs text-slate-400 max-w-[340px] mx-auto leading-relaxed font-semibold">
-                  Mô hình giúp kiểm nghiệm tính toàn vẹn dữ liệu, chống xung đột Race Condition qua Redis Cluster.
-                </p>
+            <div className="mb-5 grid gap-3 md:grid-cols-[1fr_220px]">
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  className="w-full rounded-xl border border-slate-200 py-3 pl-11 pr-4 text-sm"
+                  placeholder="Tìm theo tên, email, số điện thoại"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                />
+              </label>
+              <select
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                value={specializationFilter}
+                onChange={(event) => setSpecializationFilter(event.target.value)}
+              >
+                <option value="">Tất cả chuyên khoa</option>
+                {specializations.map((specialization) => (
+                  <option key={specialization} value={specialization}>
+                    {specialization}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {loadingDoctors ? (
+              <div className="rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">Đang tải danh sách bác sĩ...</div>
+            ) : filteredDoctors.length ? (
+              <div className="grid gap-3">
+                {filteredDoctors.map((doctor) => (
+                  <button
+                    key={doctor.id}
+                    type="button"
+                    onClick={() => setSelectedDoctorId(doctor.id)}
+                    className={`grid gap-2 rounded-2xl border p-4 text-left transition ${
+                      selectedDoctorId === doctor.id ? 'border-orange-300 bg-orange-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-black text-slate-800">{doctor.name}</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-500">{doctor.specialization}</p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] ${doctor.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {doctor.active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <div className="grid gap-1 text-sm text-slate-500">
+                      <span>{doctor.email}</span>
+                      <span>{doctor.phoneNumber}</span>
+                    </div>
+                  </button>
+                ))}
               </div>
             ) : (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center px-4">
-                  {/* Luồng A */}
-                  <div className={`p-4 rounded-2xl border text-center transition-all duration-350 ${
-                    simStep >= 4 ? 'bg-[#E6F7FF] border-[#007BFF]/30 text-[#007BFF]' : 'bg-white border-slate-150 shadow-sm'
-                  }`}>
-                    <span className="text-[9px] block font-bold text-slate-400 uppercase tracking-wider">Luồng A</span>
-                    <span className="text-xs font-bold block mt-1">Nguyễn Hải</span>
-                  </div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">Không có bác sĩ phù hợp bộ lọc hiện tại.</div>
+            )}
+          </article>
 
-                  {/* Trung tâm Khóa */}
-                  <div className="flex flex-col items-center gap-1.5 px-4 flex-1">
-                    <span className="text-[9px] font-mono text-slate-400 font-bold uppercase tracking-wider">Khóa Redis</span>
-                    <div className={`w-20 h-8 rounded-full flex items-center justify-center border font-extrabold text-[10.5px] transition-all duration-350 ${
-                      simStep >= 4 && simStep < 6
-                        ? 'bg-red-50 text-red-550 border-red-200 animate-pulse'
-                        : 'bg-white border-slate-200 text-slate-450'
-                    }`}>
-                      {simStep >= 4 && simStep < 6 ? 'LOCKED' : 'FREE'}
-                    </div>
-                  </div>
+          <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">Inspector</p>
+                <h2 className="mt-2 text-xl font-black">Lịch và trạng thái bác sĩ đang chọn</h2>
+              </div>
+            </div>
 
-                  {/* Luồng B */}
-                  <div className={`p-4 rounded-2xl border text-center transition-all duration-350 ${
-                    simStep >= 8 ? 'bg-red-50 border-red-200 text-red-500' : 'bg-white border-slate-150 shadow-sm'
-                  }`}>
-                    <span className="text-[9px] block font-bold text-slate-400 uppercase tracking-wider">Luồng B</span>
-                    <span className="text-xs font-bold block mt-1">Trần Mai</span>
+            {selectedDoctorCard ? (
+              <div className="grid gap-5">
+                <div className="flex items-center gap-4 rounded-3xl bg-slate-950 px-5 py-5 text-white">
+                  <img
+                    src={selectedDoctorCard.image}
+                    alt={selectedDoctorCard.name}
+                    className="h-18 w-18 rounded-2xl object-cover"
+                  />
+                  <div>
+                    <h3 className="text-xl font-black">{selectedDoctorCard.name}</h3>
+                    <p className="text-sm font-semibold text-orange-200">{selectedDoctorCard.specialty}</p>
+                    <p className="mt-1 text-xs text-slate-300">{selectedDoctor?.email}</p>
                   </div>
                 </div>
 
-                {/* Console Logs */}
-                <div className="bg-[#1E293B] text-emerald-450 font-mono text-[11px] rounded-xl p-4.5 space-y-2 max-h-[200px] overflow-y-auto shadow-inner leading-relaxed">
-                  {simLogs.map((l, idx) => (
-                    <div key={idx} className="flex gap-2">
-                      <span className="text-slate-450 shrink-0">[{l.time}]</span>
-                      <span className="text-slate-100">{l.text}</span>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {[
+                    { label: 'Available', value: slotSummary.available },
+                    { label: 'Booked', value: slotSummary.booked },
+                    { label: 'Reserved', value: slotSummary.reserved },
+                    { label: 'Blocked', value: slotSummary.blocked },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+                      <p className="text-2xl font-black">{item.value}</p>
+                      <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{item.label}</p>
                     </div>
                   ))}
                 </div>
+
+                {loadingSlots ? (
+                  <div className="rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">Đang tải slot tương lai...</div>
+                ) : selectedDoctorSlots.length ? (
+                  <div className="grid gap-3">
+                    {selectedDoctorSlots.slice(0, 12).map((slot) => (
+                      <article key={slot.id} className="rounded-2xl border border-slate-200 p-4">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="text-sm font-black text-slate-800">{formatDateTime(slot.startTime)}</p>
+                            <p className="mt-1 text-xs text-slate-500">Kết thúc: {formatDateTime(slot.endTime)}</p>
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600">
+                            {slot.status || (slot.booked ? 'BOOKED' : 'AVAILABLE')}
+                          </span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">Bác sĩ này chưa có slot tương lai.</div>
+                )}
               </div>
+            ) : (
+              <div className="rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">Chọn một bác sĩ để xem chi tiết lịch.</div>
             )}
-          </div>
-        </section>
-
-        {/* Microservices Health status and Audit logs (5 cols) */}
-        <section className="lg:col-span-5 space-y-6">
-          {/* Cluster Status */}
-          <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-premium">
-            <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2 mb-4 font-display">
-              <Server className="w-5 h-5 text-[#007BFF]" />
-              Trạng thái Cụm Hệ thống
-            </h2>
-            <div className="space-y-3.5">
-              {[
-                { name: 'API Gateway (8080)', status: 'Hoạt động', color: 'bg-emerald-500' },
-                { name: 'Patient Service (8081)', status: 'Hoạt động', color: 'bg-emerald-500' },
-                { name: 'Doctor Service (8082)', status: 'Hoạt động', color: 'bg-emerald-500' },
-                { name: 'Appointment Service (8083)', status: 'Hoạt động', color: 'bg-emerald-500' },
-                { name: 'Redis / Redisson Cluster', status: 'Hoạt động', color: 'bg-emerald-500' }
-              ].map((svc) => (
-                <div key={svc.name} className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-600">{svc.name}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${svc.color} opacity-75`}></span>
-                      <span className={`relative inline-flex rounded-full h-2 w-2 ${svc.color}`}></span>
-                    </span>
-                    <span className="text-[11px] font-bold text-emerald-500">{svc.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Audit Logs */}
-          <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-premium">
-            <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2 mb-4 font-display">
-              <Activity className="w-5 h-5 text-[#007BFF]" />
-              Nhật ký kiểm tra (System Audit)
-            </h2>
-            <div className="space-y-3.5 max-h-[220px] overflow-y-auto pr-1">
-              {logs.map((log, idx) => (
-                <div key={idx} className="border-b border-slate-100 pb-2 text-[11px] font-semibold">
-                  <div className="flex justify-between items-center font-bold">
-                    <span className={log.type === 'warning' ? 'text-red-500 bg-red-50 px-2 py-0.5 rounded' : 'text-slate-450 bg-slate-100 px-2 py-0.5 rounded'}>
-                      {log.type === 'warning' ? 'ĐỒNG BỘ TRÙNG' : 'INFO'}
-                    </span>
-                    <span className="text-slate-400 font-normal">{log.time}</span>
-                  </div>
-                  <p className="text-slate-600 mt-1.5 leading-relaxed">{log.message}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+          </article>
         </section>
       </main>
     </div>
