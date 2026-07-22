@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
 import { Button } from 'primereact/button';
 import { Calendar } from 'primereact/calendar';
+import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
@@ -12,6 +14,8 @@ import { appIcons } from '@/constants/appIcons';
 import { APP_ROUTES } from '@/constants/appRoutes';
 import { createAppointment } from '@/features/appointments/services/appointmentApi';
 import { fetchAvailableSlotsBySpecialization, fetchDoctorSpecializations } from '@/features/doctors/services/doctorApi';
+import { paymentApi, type PaymentResponse, type PaymentTiming } from '@/features/payments/services/paymentApi';
+import { buildVietQrTransferContent, buildVietQrUrl } from '@/features/payments/utils/vietQr';
 import type { Appointment } from '@/features/appointments/types/appointment.types';
 import type { AvailableSlot } from '@/features/doctors/types/doctor';
 import { doctors, type DoctorMock } from '@/mocks/doctors';
@@ -122,6 +126,21 @@ const formatSlotLabel = (slot: AvailableSlot) => {
   return `${slotTimeFormatter.format(startTime)} - ${slotTimeFormatter.format(endTime)} ngày ${slotDateFormatter.format(startTime)}`;
 };
 
+const formatCurrency = (amount: number, currency = 'VND') =>
+  new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount);
+
+const paymentLabels: Record<string, string> = {
+  PENDING: 'Chờ thanh toán',
+  PAID: 'Đã thanh toán',
+  FAILED: 'Thanh toán lỗi',
+  CANCELLED: 'Đã hủy',
+  REFUNDED: 'Đã hoàn tiền',
+};
+
 const formatDateForApi = (date: Date) => {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
@@ -146,6 +165,12 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
   const [quickBookingError, setQuickBookingError] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [createdAppointment, setCreatedAppointment] = useState<Appointment | null>(null);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [payment, setPayment] = useState<PaymentResponse | null>(null);
+  const [creatingPayment, setCreatingPayment] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [paymentChoiceCompleted, setPaymentChoiceCompleted] = useState(false);
   const [favoriteDoctorIds, setFavoriteDoctorIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -178,6 +203,12 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     setAvailableSlots([]);
     setBookingSuccess(false);
     setCreatedAppointment(null);
+    setShowPaymentDialog(false);
+    setPayment(null);
+    setPaymentError('');
+    setCreatingPayment(false);
+    setConfirmingPayment(false);
+    setPaymentChoiceCompleted(false);
     setQuickBookingError('');
 
     if (!selectedSpecialty || !selectedVisitDate) {
@@ -242,8 +273,28 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     () => availableSlots.find((slot) => getSlotKey(slot) === selectedSlotKey) ?? null,
     [availableSlots, selectedSlotKey],
   );
+  const paymentQrUrl = useMemo(() => payment ? buildVietQrUrl(payment.amount, payment.id) : '', [payment]);
+  const paymentTransferContent = payment ? buildVietQrTransferContent(payment.id) : '';
 
   const bookingReady = Boolean(selectedSpecialty && selectedVisitDate && selectedSlot);
+  const waitingPaymentChoice = Boolean(createdAppointment && !paymentChoiceCompleted && !bookingSuccess);
+
+  const getApiErrorMessage = (reason: unknown, fallback: string) => {
+    if (axios.isAxiosError(reason) && typeof reason.response?.data?.message === 'string') {
+      return reason.response.data.message;
+    }
+
+    return fallback;
+  };
+
+  const resetPaymentFlow = () => {
+    setShowPaymentDialog(false);
+    setPayment(null);
+    setPaymentError('');
+    setCreatingPayment(false);
+    setConfirmingPayment(false);
+    setPaymentChoiceCompleted(false);
+  };
 
   const handleBook = (doctor: DoctorMock) => {
     setSelectedDoctor(doctor);
@@ -252,6 +303,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     }
     setBookingSuccess(false);
     setCreatedAppointment(null);
+    resetPaymentFlow();
   };
 
   const handleSubmit = async () => {
@@ -260,6 +312,9 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     setCreatingAppointment(true);
     setQuickBookingError('');
     setBookingSuccess(false);
+    setPaymentChoiceCompleted(false);
+    setPayment(null);
+    setPaymentError('');
 
     try {
       const reason = bookingReason.trim();
@@ -271,12 +326,78 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
         bookingSource: 'WEB',
       });
       setCreatedAppointment(appointment);
-      setBookingSuccess(true);
-    } catch {
+      setShowPaymentDialog(true);
+    } catch (reason) {
       setQuickBookingError('Không thể tạo lịch khám. Vui lòng kiểm tra chuyên khoa, ngày và khung giờ rồi thử lại.');
     } finally {
       setCreatingAppointment(false);
     }
+  };
+
+  const handleCreatePayment = async (paymentTiming: PaymentTiming) => {
+    if (!createdAppointment) return;
+
+    setCreatingPayment(true);
+    setPaymentError('');
+
+    try {
+      const createdPayment = await paymentApi.createPayment({
+        appointmentId: createdAppointment.id,
+        paymentTiming,
+      });
+
+      setPayment(createdPayment);
+
+      if (paymentTiming === 'PAY_LATER') {
+        setPaymentChoiceCompleted(true);
+        setBookingSuccess(true);
+        setShowPaymentDialog(false);
+      }
+    } catch (reason) {
+      if (axios.isAxiosError(reason) && reason.response?.status === 409) {
+        try {
+          const existingPayment = await paymentApi.getPaymentByAppointment(createdAppointment.id);
+          setPayment(existingPayment);
+
+          if (paymentTiming === 'PAY_LATER') {
+            setPaymentChoiceCompleted(true);
+            setBookingSuccess(true);
+            setShowPaymentDialog(false);
+          }
+        } catch (lookupReason) {
+          setPaymentError(getApiErrorMessage(lookupReason, 'Không thể tải thông tin thanh toán đã tạo.'));
+        }
+      } else {
+        setPaymentError(getApiErrorMessage(reason, 'Không thể tạo thanh toán. Vui lòng thử lại.'));
+      }
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!payment) return;
+
+    setConfirmingPayment(true);
+    setPaymentError('');
+
+    try {
+      const updatedPayment = await paymentApi.confirmPaid(payment.id);
+      setPayment(updatedPayment);
+      setPaymentChoiceCompleted(true);
+      setBookingSuccess(true);
+      setShowPaymentDialog(false);
+    } catch (reason) {
+      setPaymentError(getApiErrorMessage(reason, 'Không thể xác nhận thanh toán. Vui lòng thử lại.'));
+    } finally {
+      setConfirmingPayment(false);
+    }
+  };
+
+  const handleClosePaymentDialog = () => {
+    if (creatingPayment || confirmingPayment) return;
+    setShowPaymentDialog(false);
+    setPaymentError('');
   };
 
   const renderQuickOption = (option: QuickSelectOption, selectedValue: string) => (
@@ -386,6 +507,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
                   setSelectedSpecialty(event.value ?? '');
                   setBookingSuccess(false);
                   setCreatedAppointment(null);
+                  resetPaymentFlow();
                 }}
                 placeholder={loadingSpecializations ? 'Đang tải chuyên khoa...' : specializationOptions.length ? 'Chọn chuyên khoa' : 'Không có chuyên khoa'}
                 disabled={loadingSpecializations || !specializationOptions.length}
@@ -404,6 +526,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
                   setSelectedVisitDate(event.value instanceof Date ? event.value : null);
                   setBookingSuccess(false);
                   setCreatedAppointment(null);
+                  resetPaymentFlow();
                 }}
                 placeholder={!selectedSpecialty ? 'Chọn chuyên khoa trước' : 'Chọn ngày khám'}
                 dateFormat="dd/mm/yy"
@@ -443,6 +566,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
                   setSelectedSlotKey(event.value ?? '');
                   setBookingSuccess(false);
                   setCreatedAppointment(null);
+                  resetPaymentFlow();
                 }}
                 placeholder={
                   !selectedSpecialty
@@ -473,6 +597,8 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
                 onChange={(event) => {
                   setBookingReason(event.target.value);
                   setBookingSuccess(false);
+                  setCreatedAppointment(null);
+                  resetPaymentFlow();
                 }}
                 placeholder="Nhập lý do khám nếu cần"
                 maxLength={500}
@@ -492,16 +618,17 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
               <div className="success-message quick-booking-card__success">
                 <i className="pi pi-check-circle" aria-hidden="true" />
                 <span>
-                  Đã tạo lịch khám {formatSlotLabel(selectedSlot)}
-                  {createdAppointment?.status ? `, trạng thái ${createdAppointment.status}.` : '.'}
+                  Đã xác nhận lịch khám {formatSlotLabel(selectedSlot)}.
+                  {payment?.paymentTiming === 'PAY_LATER' ? ' Thanh toán tại phòng khám.' : ''}
+                  {payment?.status === 'PAID' ? ' Đã thanh toán.' : ''}
                 </span>
               </div>
             ) : null}
             <Button
-              label="Đặt lịch"
+              label={waitingPaymentChoice ? 'Chọn thanh toán' : 'Đặt lịch'}
               icon="pi pi-arrow-right"
               iconPos="right"
-              onClick={handleSubmit}
+              onClick={waitingPaymentChoice ? () => setShowPaymentDialog(true) : handleSubmit}
               loading={creatingAppointment}
               disabled={!bookingReady || loadingSlots || creatingAppointment}
             />
@@ -663,6 +790,92 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
           </div>
         </section>
       </div>
+
+      <Dialog
+        visible={showPaymentDialog}
+        header="Thanh toán lịch khám"
+        modal
+        dismissableMask={!creatingPayment && !confirmingPayment}
+        className="profile-action-dialog profile-payment-dialog"
+        onHide={handleClosePaymentDialog}
+      >
+        {createdAppointment && selectedSlot ? (
+          <section className="profile-action-modal profile-payment-modal">
+            <div className="profile-action-summary">
+              <strong>Lịch khám vừa tạo</strong>
+              <span>{formatSlotLabel(selectedSlot)}</span>
+            </div>
+
+            {!payment ? (
+              <div className="booking-payment-choice">
+                <Button
+                  label={creatingPayment ? 'Đang tạo thanh toán...' : 'Thanh toán ngay'}
+                  icon="pi pi-qrcode"
+                  onClick={() => handleCreatePayment('PAY_NOW')}
+                  disabled={creatingPayment}
+                />
+                <Button
+                  label="Thanh toán tại phòng khám"
+                  icon="pi pi-building"
+                  outlined
+                  onClick={() => handleCreatePayment('PAY_LATER')}
+                  disabled={creatingPayment}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="profile-payment-qr">
+                  <img
+                    src={paymentQrUrl}
+                    alt="QR thanh toán MB Bank"
+                    width={320}
+                  />
+                </div>
+
+                <dl className="profile-payment-info">
+                  <div>
+                    <dt>Số tiền</dt>
+                    <dd>{formatCurrency(payment.amount, payment.currency)}</dd>
+                  </div>
+                  <div>
+                    <dt>Nội dung chuyển khoản</dt>
+                    <dd>{paymentTransferContent}</dd>
+                  </div>
+                  <div>
+                    <dt>Trạng thái</dt>
+                    <dd>{paymentLabels[payment.status] ?? payment.status}</dd>
+                  </div>
+                </dl>
+              </>
+            )}
+
+            {paymentError ? (
+              <div className="profile-alert profile-alert--error">
+                <i className="pi pi-exclamation-circle" />
+                <span>{paymentError}</span>
+              </div>
+            ) : null}
+
+            <div className="profile-action-footer">
+              <Button
+                label="Đóng"
+                icon="pi pi-times"
+                outlined
+                onClick={handleClosePaymentDialog}
+                disabled={creatingPayment || confirmingPayment}
+              />
+              {payment ? (
+                <Button
+                  label={confirmingPayment ? 'Đang xác nhận...' : 'Tôi đã thanh toán'}
+                  icon="pi pi-check"
+                  onClick={handleConfirmPayment}
+                  disabled={creatingPayment || confirmingPayment || payment.status === 'PAID'}
+                />
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+      </Dialog>
     </AppLayout>
   );
 };

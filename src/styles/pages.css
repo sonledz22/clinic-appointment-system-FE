@@ -2318,7 +2318,8 @@
 }
 
 .profile-appointment-card__doctor,
-.profile-appointment-card__time {
+.profile-appointment-card__time,
+.profile-appointment-card__payment-status {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2328,9 +2329,18 @@
 }
 
 .profile-appointment-card__doctor i,
-.profile-appointment-card__time i {
+.profile-appointment-card__time i,
+.profile-appointment-card__payment-status i {
   color: #0EA5E9;
   font-size: 14px;
+}
+
+.profile-appointment-card__payment-status {
+  color: #92400E;
+}
+
+.profile-appointment-card__payment-status i {
+  color: #D97706;
 }
 
 .profile-appointment-card p {
@@ -2363,6 +2373,19 @@
 .profile-appointment-card__detail.p-button:enabled:hover {
   border-color: #0284C7;
   background: #0284C7;
+  color: #FFFFFF;
+}
+
+.profile-appointment-card__payment.p-button {
+  border-color: #16A34A;
+  background: #16A34A;
+  color: #FFFFFF;
+  box-shadow: 0 12px 22px -18px rgba(22, 163, 74, 0.9);
+}
+
+.profile-appointment-card__payment.p-button:enabled:hover {
+  border-color: #15803D;
+  background: #15803D;
   color: #FFFFFF;
 }
 
@@ -2528,6 +2551,10 @@
   width: min(720px, calc(100vw - 32px));
 }
 
+.profile-payment-dialog.p-dialog {
+  width: min(500px, calc(100vw - 32px));
+}
+
 .profile-action-dialog.p-dialog .p-dialog-header {
   padding: 18px 22px;
   border-bottom: 1px solid #E2E8F0;
@@ -2552,6 +2579,27 @@
   padding: 20px 22px 22px;
 }
 
+.profile-payment-modal {
+  gap: 14px;
+}
+
+.booking-payment-choice {
+  display: grid;
+  gap: 10px;
+}
+
+.booking-payment-choice .p-button {
+  width: 100%;
+  min-height: 44px;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.booking-payment-choice .p-button-label {
+  white-space: normal;
+  line-height: 1.25;
+}
+
 .profile-action-summary {
   display: grid;
   gap: 5px;
@@ -2571,6 +2619,54 @@
   font-size: 13px;
   font-weight: 700;
   line-height: 1.45;
+}
+
+.profile-payment-qr {
+  display: flex;
+  justify-content: center;
+  padding: 14px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  background: #F8FAFC;
+}
+
+.profile-payment-qr img {
+  width: min(320px, 100%);
+  height: auto;
+  display: block;
+  border-radius: 6px;
+  background: #FFFFFF;
+}
+
+.profile-payment-info {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.profile-payment-info div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  background: #FFFFFF;
+}
+
+.profile-payment-info dt {
+  margin: 0 0 6px;
+  color: #64748B;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profile-payment-info dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #0F172A;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.35;
 }
 
 .profile-action-footer {
@@ -2676,7 +2772,7 @@
 
   .profile-appointment-card__actions {
     width: 100%;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   }
 
   .profile-appointment-card__detail.p-button {
@@ -2731,7 +2827,8 @@
 
   .profile-form-grid,
   .profile-detail__grid,
-  .profile-history-filters {
+  .profile-history-filters,
+  .profile-payment-info {
     grid-template-columns: 1fr;
   }
 
@@ -2745,6 +2842,7 @@
   }
 
   .profile-appointment-card__actions,
+  .booking-payment-choice,
   .profile-action-footer {
     grid-template-columns: 1fr;
     flex-direction: column;

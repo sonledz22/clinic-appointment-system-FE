@@ -10,6 +10,8 @@ import AppLayout from '@/components/layout/AppLayout';
 import PageHeader from '@/components/ui/PageHeader';
 import { useAuthStore } from '@/stores/auth.store';
 import { profileApi, type AppointmentHistory, type DoctorSummary, type PatientProfile, type RescheduleOption, type UserProfile } from '@/features/profile/services/profileApi';
+import { paymentApi, type PaymentResponse } from '@/features/payments/services/paymentApi';
+import { buildVietQrTransferContent, buildVietQrUrl } from '@/features/payments/utils/vietQr';
 
 const emptyPatientProfile: PatientProfile = {
   id: '',
@@ -36,7 +38,7 @@ const statusLabels: Record<string, { label: string; severity: 'success' | 'warni
 };
 
 const paymentLabels: Record<string, string> = {
-  PENDING: 'Chờ thanh toán',
+  PENDING: 'Chưa thanh toán',
   PAID: 'Đã thanh toán',
   FAILED: 'Thanh toán lỗi',
   REFUNDED: 'Đã hoàn tiền',
@@ -56,6 +58,13 @@ const appointmentStatusFilterOptions = [
 ];
 
 const formatDateTime = (value: string) => new Date(value).toLocaleString('vi-VN');
+
+const formatCurrency = (amount: number, currency = 'VND') =>
+  new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount);
 
 const formatDateForApi = (date: Date) => {
   const year = date.getFullYear();
@@ -103,6 +112,12 @@ const ProfilePage: React.FC = () => {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [rescheduleError, setRescheduleError] = useState('');
   const [submittingReschedule, setSubmittingReschedule] = useState(false);
+  const [paymentAppointment, setPaymentAppointment] = useState<AppointmentHistory | null>(null);
+  const [payment, setPayment] = useState<PaymentResponse | null>(null);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [loadingPayment, setLoadingPayment] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
 
   const getFallbackUserProfile = (): UserProfile | null => {
     if (!user) {
@@ -218,6 +233,8 @@ const ProfilePage: React.FC = () => {
     () => availableSlots.find((slot) => getRescheduleSlotKey(slot) === selectedSlotKey) ?? null,
     [availableSlots, selectedSlotKey],
   );
+  const paymentQrUrl = useMemo(() => payment ? buildVietQrUrl(payment.amount, payment.id) : '', [payment]);
+  const paymentTransferContent = payment ? buildVietQrTransferContent(payment.id) : '';
 
   const displayName = userProfile?.fullName?.trim() || userProfile?.email || user?.email || 'Người dùng';
   const patientName = [patientProfile.lastName, patientProfile.firstName].filter(Boolean).join(' ');
@@ -274,6 +291,10 @@ const ProfilePage: React.FC = () => {
   const displayStatus = (status: string) => statusLabels[status] ?? { label: status, severity: 'secondary' as const };
 
   const getStatusClassName = (status: string) => statusClassNames[status] ?? 'is-muted';
+
+  const canPayAppointment = (appointment: AppointmentHistory) => {
+    return appointment.paymentStatus === 'PENDING' && appointment.status !== 'CANCELLED';
+  };
 
   const getApiErrorMessage = (reason: unknown, fallback: string) => {
     if (axios.isAxiosError(reason) && typeof reason.response?.data?.message === 'string') {
@@ -411,6 +432,69 @@ const ProfilePage: React.FC = () => {
     if (submittingReschedule) return;
     setShowRescheduleDialog(false);
     setRescheduleError('');
+  };
+
+  const handleOpenPayment = async (appointment: AppointmentHistory) => {
+    setPaymentAppointment(appointment);
+    setPayment(null);
+    setPaymentError('');
+    setShowPaymentDialog(true);
+    setLoadingPayment(true);
+
+    try {
+      const createdPayment = await paymentApi.createPayment({
+        appointmentId: appointment.id,
+        paymentTiming: 'PAY_NOW',
+      });
+      setPayment(createdPayment);
+    } catch (reason) {
+      if (axios.isAxiosError(reason) && reason.response?.status === 409) {
+        try {
+          const existingPayment = await paymentApi.getPaymentByAppointment(appointment.id);
+          setPayment(existingPayment);
+        } catch (lookupReason) {
+          setPaymentError(getApiErrorMessage(lookupReason, 'Không thể tải thông tin thanh toán đã tạo.'));
+        }
+      } else {
+        setPaymentError(getApiErrorMessage(reason, 'Không thể tạo thanh toán. Vui lòng thử lại.'));
+      }
+    } finally {
+      setLoadingPayment(false);
+    }
+  };
+
+  const handleClosePayment = () => {
+    if (loadingPayment || confirmingPayment) return;
+    setShowPaymentDialog(false);
+    setPaymentError('');
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!payment) {
+      return;
+    }
+
+    setConfirmingPayment(true);
+    setPaymentError('');
+
+    try {
+      const updatedPayment = await paymentApi.confirmPaid(payment.id);
+      setPayment(updatedPayment);
+      const nextAppointments = await refreshAppointments();
+      const updatedAppointment = nextAppointments.find((appointment) => appointment.id === updatedPayment.appointmentId);
+
+      if (updatedAppointment) {
+        setPaymentAppointment(updatedAppointment);
+        setSelectedAppointment((current) => current?.id === updatedAppointment.id ? updatedAppointment : current);
+      }
+
+      setShowPaymentDialog(false);
+      updateSuccess('Đã xác nhận thanh toán.');
+    } catch (reason) {
+      setPaymentError(getApiErrorMessage(reason, 'Không thể xác nhận thanh toán. Vui lòng thử lại.'));
+    } finally {
+      setConfirmingPayment(false);
+    }
   };
 
   const handleSubmitReschedule = async () => {
@@ -752,10 +836,24 @@ const ProfilePage: React.FC = () => {
                           <i className="pi pi-clock" />
                           <span>{formatSlotTime(appointment.startTime, appointment.endTime)}</span>
                         </div>
+                        {appointment.paymentStatus && appointment.paymentStatus !== 'PAID' && (
+                          <div className="profile-appointment-card__payment-status">
+                            <i className="pi pi-wallet" />
+                            <span>{paymentLabels[appointment.paymentStatus] ?? appointment.paymentStatus}</span>
+                          </div>
+                        )}
                         {appointment.reason && <p>{appointment.reason}</p>}
                       </div>
 
                       <div className="profile-appointment-card__actions">
+                        {canPayAppointment(appointment) && (
+                          <Button
+                            label="Thanh toán"
+                            icon="pi pi-qrcode"
+                            className="profile-appointment-card__detail profile-appointment-card__payment"
+                            onClick={() => handleOpenPayment(appointment)}
+                          />
+                        )}
                         <Button
                           label="Chi tiết"
                           icon="pi pi-info-circle"
@@ -870,6 +968,79 @@ const ProfilePage: React.FC = () => {
                   </div>
                 )}
               </dl>
+            </div>
+          </section>
+        )}
+      </Dialog>
+
+      <Dialog
+        visible={showPaymentDialog}
+        header="Thanh toán lịch khám"
+        modal
+        dismissableMask={!loadingPayment && !confirmingPayment}
+        className="profile-action-dialog profile-payment-dialog"
+        onHide={handleClosePayment}
+      >
+        {paymentAppointment && (
+          <section className="profile-action-modal profile-payment-modal">
+            <div className="profile-action-summary">
+              <strong>{getDoctorName(paymentAppointment.doctorId)}</strong>
+              <span>{formatSlotTime(paymentAppointment.startTime, paymentAppointment.endTime)}</span>
+            </div>
+
+            {loadingPayment ? (
+              <div className="profile-detail__loading">
+                <i className="pi pi-spin pi-spinner" />
+                <span>Đang tạo mã QR thanh toán...</span>
+              </div>
+            ) : payment ? (
+              <>
+                <div className="profile-payment-qr">
+                  <img
+                    src={paymentQrUrl}
+                    alt="QR thanh toán MB Bank"
+                    width={320}
+                  />
+                </div>
+
+                <dl className="profile-payment-info">
+                  <div>
+                    <dt>Số tiền</dt>
+                    <dd>{formatCurrency(payment.amount, payment.currency)}</dd>
+                  </div>
+                  <div>
+                    <dt>Nội dung chuyển khoản</dt>
+                    <dd>{paymentTransferContent}</dd>
+                  </div>
+                  <div>
+                    <dt>Trạng thái</dt>
+                    <dd>{paymentLabels[payment.status] ?? payment.status}</dd>
+                  </div>
+                </dl>
+              </>
+            ) : null}
+
+            {paymentError && (
+              <div className="profile-alert profile-alert--error">
+                <i className="pi pi-exclamation-circle" />
+                <span>{paymentError}</span>
+              </div>
+            )}
+
+            <div className="profile-action-footer">
+              <Button
+                label="Đóng"
+                icon="pi pi-times"
+                outlined
+                onClick={handleClosePayment}
+                disabled={loadingPayment || confirmingPayment}
+              />
+              <Button
+                label={confirmingPayment ? 'Đang xác nhận...' : 'Tôi đã thanh toán'}
+                icon="pi pi-check"
+                onClick={handleConfirmPayment}
+                disabled={loadingPayment || confirmingPayment || !payment || payment.status === 'PAID'}
+              />
             </div>
           </section>
         )}
