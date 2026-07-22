@@ -7,6 +7,12 @@ export interface Slot {
   status?: string;
 }
 
+export interface AvailableSlot {
+  startTime: string;
+  endTime: string;
+  availableCount: number;
+}
+
 export interface Doctor {
   id: string;
   userId: string;

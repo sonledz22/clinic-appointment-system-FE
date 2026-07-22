@@ -1,5 +1,5 @@
 import axiosClient from '@/lib/axiosClient';
-import type { Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
+import type { AvailableSlot, Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
 
 const DEFAULT_DOCTOR_IMAGE = 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=500';
 
@@ -32,6 +32,13 @@ export const fetchDoctorSpecializations = async () => {
 };
 
 export const fetchDoctorsBySpecialization = async (specialization: string) => fetchDoctors(specialization);
+
+export const fetchAvailableSlotsBySpecialization = async (specialization: string, date: string) => {
+  const response = await axiosClient.get<AvailableSlot[]>('/api/doctors/available-slots', {
+    params: { specialization, date },
+  });
+  return response.data;
+};
 
 export const fetchDoctorSlots = async (doctorId: string) => {
   const response = await axiosClient.get<Slot[]>(`/api/doctors/${doctorId}/slots`);

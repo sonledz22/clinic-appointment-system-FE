@@ -1,109 +1,263 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { Button } from 'primereact/button';
+import { Calendar } from 'primereact/calendar';
+import { Dialog } from 'primereact/dialog';
+import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
-import { Calendar } from 'primereact/calendar';
-import { Dropdown } from 'primereact/dropdown';
-import { Card } from 'primereact/card';
-import { Tag } from 'primereact/tag';
 import AppLayout from '@/components/layout/AppLayout';
 import PageHeader from '@/components/ui/PageHeader';
 import { useAuthStore } from '@/stores/auth.store';
+import { profileApi, type AppointmentHistory, type DoctorSummary, type PatientProfile, type RescheduleOption, type UserProfile } from '@/features/profile/services/profileApi';
 
-interface PatientProfile {
-  fullName: string;
-  phoneNumber: string;
-  dateOfBirth: Date | null;
-  gender: string;
-  address: string;
-  medicalHistory: string;
-  avatarUrl: string;
-}
+const emptyPatientProfile: PatientProfile = {
+  id: '',
+  userId: '',
+  firstName: '',
+  lastName: '',
+  dateOfBirth: null,
+  gender: '',
+  contactInformation: '',
+};
 
-interface AppointmentHistory {
-  id: string;
-  doctorName: string;
-  specialty: string;
-  startTime: string;
-  endTime: string;
-  patientName: string;
-  patientPhone: string;
-  patientSymptoms: string;
-  status: string;
-  createdAt: string;
-}
+const genderOptions = [
+  { label: 'Nam', value: 'MALE' },
+  { label: 'Nữ', value: 'FEMALE' },
+  { label: 'Khác', value: 'OTHER' },
+];
+
+const statusLabels: Record<string, { label: string; severity: 'success' | 'warning' | 'danger' | 'info' | 'secondary' }> = {
+  PENDING: { label: 'Đang chờ', severity: 'warning' },
+  PENDING_PAYMENT: { label: 'Chờ thanh toán', severity: 'warning' },
+  CONFIRMED: { label: 'Đã xác nhận', severity: 'success' },
+  COMPLETED: { label: 'Đã hoàn tất', severity: 'info' },
+  CANCELLED: { label: 'Đã hủy', severity: 'danger' },
+};
+
+const paymentLabels: Record<string, string> = {
+  PENDING: 'Chờ thanh toán',
+  PAID: 'Đã thanh toán',
+  FAILED: 'Thanh toán lỗi',
+  REFUNDED: 'Đã hoàn tiền',
+};
+
+const statusClassNames: Record<string, string> = {
+  PENDING: 'is-warning',
+  PENDING_PAYMENT: 'is-payment',
+  CONFIRMED: 'is-success',
+  COMPLETED: 'is-info',
+  CANCELLED: 'is-danger',
+};
+
+const appointmentStatusFilterOptions = [
+  { label: 'Tất cả trạng thái', value: '' },
+  ...Object.entries(statusLabels).map(([value, item]) => ({ label: item.label, value })),
+];
+
+const formatDateTime = (value: string) => new Date(value).toLocaleString('vi-VN');
+
+const formatDateForApi = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getRescheduleSlotKey = (slot: RescheduleOption) => `${slot.startTime}|${slot.endTime}`;
+
+const isSameCalendarDate = (firstDate: Date, secondDate: Date) =>
+  firstDate.getFullYear() === secondDate.getFullYear()
+  && firstDate.getMonth() === secondDate.getMonth()
+  && firstDate.getDate() === secondDate.getDate();
 
 const ProfilePage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
-  const userInfo = {
-    id: user?.userId ?? user?.id ?? 'anonymous',
-    email: user?.email ?? '',
-    name: user?.email ? user.email.split('@')[0] : '',
-  };
-  const profileKey = `patient_profile_${userInfo.id}`;
-
   const [activeTab, setActiveTab] = useState<'profile' | 'history'>('profile');
-  const [loading, setLoading] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  
-  // Profile state
-  const [profile, setProfile] = useState<PatientProfile>({
-    fullName: userInfo.name || '',
-    phoneNumber: '',
-    dateOfBirth: null,
-    gender: 'Nam',
-    address: '',
-    medicalHistory: '',
-    avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
-  });
-
-  // History state
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [patientProfile, setPatientProfile] = useState<PatientProfile>(emptyPatientProfile);
   const [appointments, setAppointments] = useState<AppointmentHistory[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [savingPatient, setSavingPatient] = useState(false);
+  const [error, setError] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [doctorsById, setDoctorsById] = useState<Record<string, DoctorSummary>>({});
+  const [appointmentSearchTerm, setAppointmentSearchTerm] = useState('');
+  const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('');
+  const [appointmentDateFilter, setAppointmentDateFilter] = useState<Date | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentHistory | null>(null);
+  const [showAppointmentDetail, setShowAppointmentDetail] = useState(false);
+  const [loadingAppointmentDetail, setLoadingAppointmentDetail] = useState(false);
+  const [appointmentDetailError, setAppointmentDetailError] = useState('');
+  const [actionAppointment, setActionAppointment] = useState<AppointmentHistory | null>(null);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelError, setCancelError] = useState('');
+  const [submittingCancel, setSubmittingCancel] = useState(false);
+  const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<RescheduleOption[]>([]);
+  const [selectedVisitDate, setSelectedVisitDate] = useState<Date | null>(null);
+  const [selectedSlotKey, setSelectedSlotKey] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState('');
+  const [submittingReschedule, setSubmittingReschedule] = useState(false);
 
-  // Load profile and history from localStorage
-  useEffect(() => {
-    const savedProfile = localStorage.getItem(profileKey);
-    if (savedProfile) {
-      try {
-        const parsed = JSON.parse(savedProfile);
-        setProfile({
-          ...parsed,
-          dateOfBirth: parsed.dateOfBirth ? new Date(parsed.dateOfBirth) : null,
-        });
-      } catch (e) {
-        console.error('Error parsing profile', e);
-      }
+  const getFallbackUserProfile = (): UserProfile | null => {
+    if (!user) {
+      return null;
     }
 
-    const savedAppts = localStorage.getItem('patient_appointments');
-    if (savedAppts) {
-      try {
-        setAppointments(JSON.parse(savedAppts));
-      } catch (e) {
-        console.error('Error parsing appointments', e);
-      }
-    }
-  }, [profileKey]);
-
-  const genderOptions = [
-    { label: 'Nam', value: 'Nam' },
-    { label: 'Nữ', value: 'Nữ' },
-    { label: 'Khác', value: 'Khác' },
-  ];
-
-  const handleSave = () => {
-    setLoading(true);
-    setSaveSuccess(false);
-
-    // Simulate API delay
-    setTimeout(() => {
-      localStorage.setItem(profileKey, JSON.stringify(profile));
-      setLoading(false);
-      setSaveSuccess(true);
-      // Hide success banner after 3 seconds
-      setTimeout(() => setSaveSuccess(false), 3000);
-    }, 800);
+    const id = user.userId ?? user.id;
+    return {
+      id,
+      patientId: user.patientId ?? null,
+      email: user.email,
+      fullName: user.email.split('@')[0] || user.email,
+      phoneNumber: '',
+      status: 'ACTIVE',
+      roles: (user.roles ?? []).map((role) => ({ id: role, name: role, description: role })),
+    };
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProfile = async () => {
+      setLoading(true);
+      setError('');
+
+      try {
+        const [accountResult, patientResult, historyResult] = await Promise.allSettled([
+          profileApi.getUserProfile(),
+          profileApi.getPatientProfile(),
+          profileApi.getAppointments(),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setUserProfile(accountResult.status === 'fulfilled' ? accountResult.value : getFallbackUserProfile());
+
+        if (patientResult.status === 'fulfilled') {
+          setPatientProfile(patientResult.value);
+        } else if (axios.isAxiosError(patientResult.reason) && patientResult.reason.response?.status === 404) {
+          setPatientProfile(emptyPatientProfile);
+        }
+
+        if (historyResult.status === 'fulfilled') {
+          setAppointments(historyResult.value);
+        }
+      } catch {
+        if (!cancelled) {
+          setError('Không thể tải hồ sơ. Vui lòng thử lại.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const missingDoctorIds = Array.from(new Set(appointments.map((appointment) => appointment.doctorId)))
+      .filter((doctorId) => doctorId && !doctorsById[doctorId]);
+
+    if (!missingDoctorIds.length) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadDoctors = async () => {
+      const doctorEntries = await Promise.all(
+        missingDoctorIds.map(async (doctorId) => {
+          try {
+            const doctor = await profileApi.getDoctor(doctorId);
+            return [doctorId, doctor] as const;
+          } catch {
+            return [doctorId, null] as const;
+          }
+        }),
+      );
+
+      if (!cancelled) {
+        setDoctorsById((current) => {
+          const next = { ...current };
+          doctorEntries.forEach(([doctorId, doctor]) => {
+            if (doctor) {
+              next[doctorId] = doctor;
+            }
+          });
+          return next;
+        });
+      }
+    };
+
+    void loadDoctors();
+    return () => {
+      cancelled = true;
+    };
+  }, [appointments, doctorsById]);
+
+  const sortedAppointments = useMemo(
+    () => [...appointments].sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()),
+    [appointments],
+  );
+
+  const selectedRescheduleSlot = useMemo(
+    () => availableSlots.find((slot) => getRescheduleSlotKey(slot) === selectedSlotKey) ?? null,
+    [availableSlots, selectedSlotKey],
+  );
+
+  const displayName = userProfile?.fullName?.trim() || userProfile?.email || user?.email || 'Người dùng';
+  const patientName = [patientProfile.lastName, patientProfile.firstName].filter(Boolean).join(' ');
+  const profileInitial = displayName.charAt(0).toUpperCase();
+  const selectedAppointmentDoctor = selectedAppointment ? doctorsById[selectedAppointment.doctorId] : null;
+
+  const getDoctorName = (doctorId: string) => doctorsById[doctorId]?.name ?? 'Bác sĩ đang cập nhật';
+
+  const getAppointmentSpecialization = (appointment: AppointmentHistory) =>
+    appointment.specialization
+      || doctorsById[appointment.doctorId]?.specialization
+      || 'Đang cập nhật';
+
+  const hasAppointmentFilters = Boolean(appointmentSearchTerm.trim() || appointmentStatusFilter || appointmentDateFilter);
+
+  const filteredAppointments = useMemo(() => {
+    const keyword = appointmentSearchTerm.trim().toLowerCase();
+
+    return sortedAppointments.filter((appointment) => {
+      const statusLabel = statusLabels[appointment.status]?.label ?? appointment.status;
+      const doctorName = getDoctorName(appointment.doctorId);
+      const specialization = getAppointmentSpecialization(appointment);
+      const appointmentDate = new Date(appointment.startTime);
+
+      const matchesKeyword = !keyword || [
+        appointment.id,
+        doctorName,
+        specialization,
+        appointment.reason ?? '',
+        statusLabel,
+        appointment.status,
+        appointment.paymentStatus ?? '',
+      ].some((value) => value.toLowerCase().includes(keyword));
+
+      const matchesStatus = !appointmentStatusFilter || appointment.status === appointmentStatusFilter;
+      const matchesDate = !appointmentDateFilter || isSameCalendarDate(appointmentDate, appointmentDateFilter);
+
+      return matchesKeyword && matchesStatus && matchesDate;
+    });
+  }, [appointmentDateFilter, appointmentSearchTerm, appointmentStatusFilter, doctorsById, sortedAppointments]);
 
   const formatSlotTime = (startTimeStr: string, endTimeStr: string) => {
     try {
@@ -117,254 +271,773 @@ const ProfilePage: React.FC = () => {
     }
   };
 
+  const displayStatus = (status: string) => statusLabels[status] ?? { label: status, severity: 'secondary' as const };
+
+  const getStatusClassName = (status: string) => statusClassNames[status] ?? 'is-muted';
+
+  const getApiErrorMessage = (reason: unknown, fallback: string) => {
+    if (axios.isAxiosError(reason) && typeof reason.response?.data?.message === 'string') {
+      return reason.response.data.message;
+    }
+
+    return fallback;
+  };
+
+  const refreshAppointments = async () => {
+    const nextAppointments = await profileApi.getAppointments();
+    setAppointments(nextAppointments);
+    return nextAppointments;
+  };
+
+  const updateSuccess = (message: string) => {
+    setSaveSuccess(message);
+    window.setTimeout(() => setSaveSuccess(''), 3000);
+  };
+
+  const handleOpenAppointmentDetail = async (appointment: AppointmentHistory) => {
+    setSelectedAppointment(appointment);
+    setShowAppointmentDetail(true);
+    setAppointmentDetailError('');
+    setLoadingAppointmentDetail(true);
+
+    try {
+      const [appointmentDetail, doctor] = await Promise.all([
+        profileApi.getAppointmentDetail(appointment.id),
+        doctorsById[appointment.doctorId]
+          ? Promise.resolve(doctorsById[appointment.doctorId])
+          : profileApi.getDoctor(appointment.doctorId),
+      ]);
+
+      setSelectedAppointment(appointmentDetail);
+      setDoctorsById((current) => ({ ...current, [doctor.id]: doctor }));
+    } catch {
+      setAppointmentDetailError('Không thể tải chi tiết lịch hẹn.');
+    } finally {
+      setLoadingAppointmentDetail(false);
+    }
+  };
+
+  const handleCloseAppointmentDetail = () => {
+    setShowAppointmentDetail(false);
+    setAppointmentDetailError('');
+  };
+
+  const handleOpenCancel = (appointment: AppointmentHistory) => {
+    setActionAppointment(appointment);
+    setCancelReason('');
+    setCancelError('');
+    setShowCancelDialog(true);
+  };
+
+  const handleCloseCancel = () => {
+    if (submittingCancel) return;
+    setShowCancelDialog(false);
+    setCancelError('');
+  };
+
+  const handleSubmitCancel = async () => {
+    if (!actionAppointment || !cancelReason.trim()) {
+      return;
+    }
+
+    setSubmittingCancel(true);
+    setCancelError('');
+
+    try {
+      const updatedAppointment = await profileApi.cancelAppointment(actionAppointment.id, {
+        cancelReason: cancelReason.trim(),
+      });
+      await refreshAppointments();
+      setSelectedAppointment((current) => current?.id === updatedAppointment.id ? updatedAppointment : current);
+      setShowCancelDialog(false);
+      updateSuccess('Đã hủy lịch hẹn.');
+    } catch (reason) {
+      setCancelError(getApiErrorMessage(reason, 'Không thể hủy lịch hẹn.'));
+    } finally {
+      setSubmittingCancel(false);
+    }
+  };
+
+  const handleOpenReschedule = (appointment: AppointmentHistory) => {
+    setActionAppointment(appointment);
+    setSelectedVisitDate(null);
+    setSelectedSlotKey('');
+    setRescheduleReason('');
+    setRescheduleError('');
+    setAvailableSlots([]);
+    setShowRescheduleDialog(true);
+    setLoadingSlots(false);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setSelectedSlotKey('');
+    setAvailableSlots([]);
+    setRescheduleError('');
+
+    if (!showRescheduleDialog || !actionAppointment || !selectedVisitDate) {
+      setLoadingSlots(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLoadingSlots(true);
+    profileApi.getRescheduleOptions(actionAppointment.id, formatDateForApi(selectedVisitDate))
+      .then((slots) => {
+        if (cancelled) return;
+        setAvailableSlots(
+          slots
+            .filter((slot) => slot.availableCount > 0)
+            .sort((first, second) => new Date(first.startTime).getTime() - new Date(second.startTime).getTime()),
+        );
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        setRescheduleError(getApiErrorMessage(reason, 'Không thể tải danh sách khung giờ trống.'));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoadingSlots(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actionAppointment, selectedVisitDate, showRescheduleDialog]);
+
+  const handleCloseReschedule = () => {
+    if (submittingReschedule) return;
+    setShowRescheduleDialog(false);
+    setRescheduleError('');
+  };
+
+  const handleSubmitReschedule = async () => {
+    if (!actionAppointment || !selectedRescheduleSlot) {
+      return;
+    }
+
+    setSubmittingReschedule(true);
+    setRescheduleError('');
+
+    try {
+      const updatedAppointment = await profileApi.rescheduleAppointment(actionAppointment.id, {
+        startTime: selectedRescheduleSlot.startTime,
+        endTime: selectedRescheduleSlot.endTime,
+        reason: rescheduleReason.trim() || undefined,
+      });
+      await refreshAppointments();
+      setSelectedAppointment((current) => current?.id === updatedAppointment.id ? updatedAppointment : current);
+      setShowRescheduleDialog(false);
+      updateSuccess('Đã đổi khung giờ khám.');
+    } catch (reason) {
+      setRescheduleError(getApiErrorMessage(reason, 'Không thể đổi khung giờ khám.'));
+    } finally {
+      setSubmittingReschedule(false);
+    }
+  };
+
+  const handleSaveAccount = async () => {
+    if (!userProfile) return;
+    setSavingAccount(true);
+    setError('');
+
+    try {
+      const updated = await profileApi.updateUserProfile({
+        fullName: userProfile.fullName,
+        phoneNumber: userProfile.phoneNumber ?? '',
+      });
+      setUserProfile(updated);
+      updateSuccess('Đã cập nhật thông tin tài khoản.');
+    } catch {
+      setError('Không thể cập nhật thông tin tài khoản.');
+    } finally {
+      setSavingAccount(false);
+    }
+  };
+
+  const handleSavePatient = async () => {
+    setSavingPatient(true);
+    setError('');
+
+    try {
+      const updated = await profileApi.updatePatientProfile({
+        firstName: patientProfile.firstName,
+        lastName: patientProfile.lastName,
+        dateOfBirth: patientProfile.dateOfBirth,
+        gender: patientProfile.gender ?? '',
+        contactInformation: patientProfile.contactInformation ?? '',
+      });
+      setPatientProfile(updated);
+      setUserProfile((current) => current ? { ...current, patientId: updated.id } : current);
+      updateSuccess('Đã cập nhật hồ sơ bệnh nhân.');
+    } catch {
+      setError('Không thể cập nhật hồ sơ bệnh nhân.');
+    } finally {
+      setSavingPatient(false);
+    }
+  };
+
   return (
     <AppLayout>
-      <PageHeader 
-        eyebrow="Hồ sơ bệnh nhân" 
-        title="Trang cá nhân" 
-        description="Quản lý thông tin y tế cá nhân và theo dõi lịch sử đặt lịch khám bệnh của bạn." 
+      <PageHeader
+        
+        title="Trang cá nhân"
       />
 
-      <div className="max-w-4xl mx-auto px-4 mb-8">
-        
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-200 mb-6">
+      <section className="profile-page">
+        {error && (
+          <div className="profile-alert profile-alert--error">
+            <i className="pi pi-exclamation-circle" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {saveSuccess && (
+          <div className="profile-alert profile-alert--success">
+            <i className="pi pi-check-circle" />
+            <span>{saveSuccess}</span>
+          </div>
+        )}
+
+        <div className="profile-tabs" role="tablist" aria-label="Hồ sơ cá nhân">
           <button
             type="button"
+            className={`profile-tab${activeTab === 'profile' ? ' is-active' : ''}`}
             onClick={() => setActiveTab('profile')}
-            className={`py-3 px-6 font-semibold border-b-2 transition-all ${
-              activeTab === 'profile'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
+            role="tab"
+            aria-selected={activeTab === 'profile'}
           >
-            <i className="pi pi-user mr-2" />
-            Thông tin cá nhân
+            <i className="pi pi-user" />
+            <span>Thông tin cá nhân</span>
           </button>
           <button
             type="button"
+            className={`profile-tab${activeTab === 'history' ? ' is-active' : ''}`}
             onClick={() => setActiveTab('history')}
-            className={`py-3 px-6 font-semibold border-b-2 transition-all ${
-              activeTab === 'history'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
+            role="tab"
+            aria-selected={activeTab === 'history'}
           >
-            <i className="pi pi-calendar mr-2" />
-            Lịch sử đặt khám
-            {appointments.length > 0 && (
-              <span className="ml-2 bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded-full">
-                {appointments.length}
-              </span>
-            )}
+            <i className="pi pi-calendar" />
+            <span>Lịch sử đặt khám</span>
+            {appointments.length > 0 && <strong>{appointments.length}</strong>}
           </button>
         </div>
 
-        {/* Tab 1: Profile Edit */}
-        {activeTab === 'profile' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            {/* Left Column: Avatar & Account summary */}
-            <Card className="flex flex-col items-center text-center p-4 border border-gray-100 shadow-sm h-fit">
-              <div className="flex flex-col items-center gap-3">
-                <img
-                  src={profile.avatarUrl}
-                  alt={profile.fullName}
-                  className="w-32 h-32 rounded-full object-cover border-4 border-blue-500 shadow-md"
-                />
+        {loading ? (
+          <div className="profile-loading">
+            <i className="pi pi-spin pi-spinner" />
+            <span>Đang tải hồ sơ...</span>
+          </div>
+        ) : activeTab === 'profile' && userProfile ? (
+          <div className="profile-summary-grid">
+            <aside className="profile-account-panel">
+              <div className="profile-avatar" aria-hidden="true">{profileInitial}</div>
+              <div className="profile-account-panel__identity">
+                <h2>{displayName}</h2>
+                <p>{userProfile.email}</p>
+              </div>
+              <div className="profile-account-panel__meta">
+                <span>Vai trò</span>
+                <strong>Bệnh nhân</strong>
+              </div>
+              <div className="profile-account-panel__meta">
+                <span>Tài khoản</span>
+                <strong>{userProfile.status}</strong>
+              </div>
+              <div className="profile-account-panel__meta">
+                <span>Hồ sơ y tế</span>
+                <strong>{patientName || 'Chưa cập nhật'}</strong>
+              </div>
+            </aside>
+
+            <section className="profile-form-panel">
+              <div className="profile-form-panel__header">
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900 m-0">{profile.fullName || 'Chưa cập nhật tên'}</h3>
-                  <p className="text-sm text-gray-500 mt-1 mb-0">{userInfo.email}</p>
-                </div>
-                <Tag value="Bệnh nhân" severity="success" className="px-3 py-1 rounded" />
-                <div className="mt-2 w-full">
-                  <label htmlFor="avatar-url" className="text-xs font-bold text-gray-500 block mb-1">Link ảnh đại diện</label>
-                  <InputText 
-                    id="avatar-url"
-                    value={profile.avatarUrl}
-                    onChange={(e) => setProfile({ ...profile, avatarUrl: e.target.value })}
-                    className="p-inputtext-sm w-full text-xs"
-                    placeholder="URL hình ảnh"
-                  />
+                  <h2>Thông tin y tế và liên hệ</h2>
                 </div>
               </div>
-            </Card>
 
-            {/* Right Column: Profile Form fields */}
-            <Card className="col-span-2 border border-gray-100 shadow-sm p-4">
-              <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Thông tin y tế & liên lạc</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1 col-span-2">
-                  <label htmlFor="fullName" className="text-xs font-bold text-gray-700">Họ và tên *</label>
-                  <InputText 
-                    id="fullName" 
-                    value={profile.fullName} 
-                    onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
-                    className="w-full"
+              <div className="profile-form-grid">
+                <label className="profile-field profile-field--wide" htmlFor="fullName">
+                  <span>Họ và tên</span>
+                  <InputText
+                    id="fullName"
+                    value={userProfile.fullName}
+                    onChange={(event) => setUserProfile({ ...userProfile, fullName: event.target.value })}
                   />
-                </div>
+                </label>
 
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="phoneNumber" className="text-xs font-bold text-gray-700">Số điện thoại *</label>
-                  <InputText 
-                    id="phoneNumber" 
-                    value={profile.phoneNumber} 
-                    onChange={(e) => setProfile({ ...profile, phoneNumber: e.target.value })}
+                <label className="profile-field" htmlFor="lastName">
+                  <span>Họ bệnh nhân</span>
+                  <InputText
+                    id="lastName"
+                    value={patientProfile.lastName}
+                    onChange={(event) => setPatientProfile({ ...patientProfile, lastName: event.target.value })}
+                  />
+                </label>
+
+                <label className="profile-field" htmlFor="firstName">
+                  <span>Tên bệnh nhân</span>
+                  <InputText
+                    id="firstName"
+                    value={patientProfile.firstName}
+                    onChange={(event) => setPatientProfile({ ...patientProfile, firstName: event.target.value })}
+                  />
+                </label>
+
+                <label className="profile-field" htmlFor="phoneNumber">
+                  <span>Số điện thoại</span>
+                  <InputText
+                    id="phoneNumber"
+                    value={userProfile.phoneNumber ?? ''}
+                    onChange={(event) => setUserProfile({ ...userProfile, phoneNumber: event.target.value })}
                     placeholder="Nhập số điện thoại"
-                    className="w-full"
                   />
-                </div>
+                </label>
 
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="email" className="text-xs font-bold text-gray-700">Địa chỉ Email</label>
-                  <InputText 
-                    id="email" 
-                    value={userInfo.email || ''} 
-                    disabled 
-                    className="w-full bg-gray-50 cursor-not-allowed text-gray-500"
-                  />
-                </div>
+                <label className="profile-field" htmlFor="email">
+                  <span>Email</span>
+                  <InputText id="email" value={userProfile.email} disabled />
+                </label>
 
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="dob" className="text-xs font-bold text-gray-700">Ngày sinh</label>
-                  <Calendar 
-                    id="dob" 
-                    value={profile.dateOfBirth} 
-                    onChange={(e) => setProfile({ ...profile, dateOfBirth: e.value as Date | null })} 
-                    showIcon 
+                <label className="profile-field" htmlFor="dob">
+                  <span>Ngày sinh</span>
+                  <Calendar
+                    id="dob"
+                    value={patientProfile.dateOfBirth ? new Date(`${patientProfile.dateOfBirth}T00:00:00`) : null}
+                    onChange={(event) => setPatientProfile({
+                      ...patientProfile,
+                      dateOfBirth: event.value instanceof Date ? event.value.toISOString().slice(0, 10) : null,
+                    })}
+                    showIcon
                     dateFormat="dd/mm/yy"
                     placeholder="Chọn ngày sinh"
-                    className="w-full"
                   />
-                </div>
+                </label>
 
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="gender" className="text-xs font-bold text-gray-700">Giới tính</label>
-                  <Dropdown 
-                    id="gender" 
-                    value={profile.gender} 
-                    options={genderOptions} 
-                    onChange={(e) => setProfile({ ...profile, gender: e.value })}
+                <label className="profile-field" htmlFor="gender">
+                  <span>Giới tính</span>
+                  <Dropdown
+                    id="gender"
+                    value={patientProfile.gender}
+                    options={genderOptions}
+                    onChange={(event) => setPatientProfile({ ...patientProfile, gender: event.value })}
                     placeholder="Chọn giới tính"
-                    className="w-full"
                   />
-                </div>
+                </label>
 
-                <div className="flex flex-col gap-1 col-span-2">
-                  <label htmlFor="address" className="text-xs font-bold text-gray-700">Địa chỉ hiện tại</label>
-                  <InputText 
-                    id="address" 
-                    value={profile.address} 
-                    onChange={(e) => setProfile({ ...profile, address: e.target.value })}
-                    placeholder="Nhập địa chỉ nhà"
-                    className="w-full"
+                <label className="profile-field profile-field--wide" htmlFor="contactInformation">
+                  <span>Thông tin liên hệ</span>
+                  <InputText
+                    id="contactInformation"
+                    value={patientProfile.contactInformation ?? ''}
+                    onChange={(event) => setPatientProfile({ ...patientProfile, contactInformation: event.target.value })}
+                    placeholder="Số điện thoại hoặc thông tin liên hệ"
                   />
-                </div>
-
-                <div className="flex flex-col gap-1 col-span-2">
-                  <label htmlFor="history" className="text-xs font-bold text-gray-700">Tiền sử bệnh án / Lưu ý sức khỏe</label>
-                  <InputTextarea 
-                    id="history" 
-                    value={profile.medicalHistory} 
-                    onChange={(e) => setProfile({ ...profile, medicalHistory: e.target.value })}
-                    placeholder="Mô tả tiền sử bệnh án, dị ứng thuốc (nếu có)..."
-                    rows={4}
-                    className="w-full"
-                  />
-                </div>
+                </label>
               </div>
 
-              {/* Status and Action Buttons */}
-              <div className="mt-5 flex items-center justify-between border-t pt-4">
-                <div>
-                  {saveSuccess && (
-                    <span className="text-green-600 text-sm font-semibold flex items-center gap-1">
-                      <i className="pi pi-check" /> Đã lưu thông tin thành công!
-                    </span>
-                  )}
-                </div>
+              <div className="profile-form-actions">
                 <Button
-                  label={loading ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  label={savingAccount ? 'Đang lưu...' : 'Lưu tài khoản'}
+                  icon="pi pi-user-edit"
+                  onClick={handleSaveAccount}
+                  disabled={savingAccount || savingPatient}
+                  outlined
+                />
+                <Button
+                  label={savingPatient ? 'Đang lưu...' : 'Lưu hồ sơ bệnh nhân'}
                   icon="pi pi-save"
-                  onClick={handleSave}
-                  disabled={loading}
-                  className="p-button-primary px-4"
+                  onClick={handleSavePatient}
+                  disabled={savingAccount || savingPatient}
                 />
               </div>
-            </Card>
+            </section>
           </div>
-        )}
+        ) : null}
 
-        {/* Tab 2: Appointment History */}
-        {activeTab === 'history' && (
-          <div className="flex flex-col gap-4">
-            {appointments.length === 0 ? (
-              <Card className="text-center p-8 border border-gray-100 shadow-sm">
-                <i className="pi pi-calendar-times text-5xl text-gray-300 mb-3" />
-                <h3 className="text-lg font-bold text-gray-800 m-0">Không tìm thấy lịch hẹn</h3>
-                <p className="text-sm text-gray-500 mt-2 mb-0">Bạn chưa đặt lịch khám nào trên hệ thống.</p>
-              </Card>
-            ) : (
-              appointments.map((appt) => (
-                <Card 
-                  key={appt.id} 
-                  className="border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200"
-                >
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    
-                    {/* Appointment details */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Tag value="Đã xác nhận" severity="success" className="rounded" />
-                        <span className="text-xs text-gray-400">Đặt lúc: {new Date(appt.createdAt).toLocaleString('vi-VN')}</span>
-                      </div>
-                      <h4 className="text-lg font-bold text-gray-900 m-0">Bác sĩ: {appt.doctorName}</h4>
-                      <div className="text-sm text-blue-600 font-semibold mt-1">{appt.specialty}</div>
-                      
-                      <div className="mt-2 flex flex-col gap-1 text-sm text-gray-600">
-                        <div>
-                          <i className="pi pi-clock mr-2 text-gray-400" />
-                          <strong>Giờ khám: </strong>{formatSlotTime(appt.startTime, appt.endTime)}
-                        </div>
-                        <div>
-                          <i className="pi pi-user mr-2 text-gray-400" />
-                          <strong>Bệnh nhân: </strong>{appt.patientName} ({appt.patientPhone})
-                        </div>
-                        {appt.patientSymptoms && (
-                          <div className="italic text-gray-500 mt-1">
-                            "Triệu chứng: {appt.patientSymptoms}"
-                          </div>
-                        )}
-                      </div>
-                    </div>
+        {!loading && activeTab === 'history' && (
+          <section className="profile-history-panel">
+            <div className="profile-history-panel__header">
+              <div>
+                <h2>Lịch sử đặt khám</h2>
+                <p>
+                  {appointments.length
+                    ? hasAppointmentFilters
+                      ? `Hiển thị ${filteredAppointments.length}/${appointments.length} lịch hẹn`
+                      : `${appointments.length} lịch hẹn gần đây`
+                    : 'Chưa có lịch hẹn nào'}
+                </p>
+              </div>
+            </div>
 
-                    {/* Actions on history card */}
-                    <div className="flex md:flex-col gap-2 justify-end">
-                      <Button 
-                        label="Xem hóa đơn" 
-                        icon="pi pi-file-pdf" 
-                        outlined 
-                        className="p-button-sm text-xs" 
-                        onClick={() => alert('Chức năng xuất hóa đơn sẽ được cập nhật sau.')}
-                      />
-                      <Button 
-                        label="Yêu cầu hỗ trợ" 
-                        icon="pi pi-question-circle" 
-                        text 
-                        className="p-button-sm text-xs text-gray-500 hover:text-gray-700" 
-                        onClick={() => alert('Đã gửi yêu cầu hỗ trợ. Bộ phận CSKH sẽ liên hệ sớm nhất.')}
-                      />
-                    </div>
-
-                  </div>
-                </Card>
-              ))
+            {appointments.length > 0 && (
+              <div className="profile-history-filters">
+                <label className="profile-field profile-history-search" htmlFor="appointmentSearch">
+                  <span>Tìm kiếm</span>
+                  <InputText
+                    id="appointmentSearch"
+                    value={appointmentSearchTerm}
+                    onChange={(event) => setAppointmentSearchTerm(event.target.value)}
+                    placeholder="Tìm bác sĩ, chuyên khoa, lý do, trạng thái"
+                  />
+                </label>
+                <label className="profile-field" htmlFor="appointmentStatusFilter">
+                  <span>Trạng thái</span>
+                  <Dropdown
+                    id="appointmentStatusFilter"
+                    value={appointmentStatusFilter}
+                    options={appointmentStatusFilterOptions}
+                    onChange={(event) => setAppointmentStatusFilter(event.value ?? '')}
+                  />
+                </label>
+                <label className="profile-field" htmlFor="appointmentDateFilter">
+                  <span>Ngày khám</span>
+                  <Calendar
+                    inputId="appointmentDateFilter"
+                    value={appointmentDateFilter}
+                    onChange={(event) => setAppointmentDateFilter(event.value instanceof Date ? event.value : null)}
+                    showIcon
+                    showButtonBar
+                    dateFormat="dd/mm/yy"
+                    placeholder="Chọn ngày"
+                  />
+                </label>
+                <Button
+                  label="Xóa lọc"
+                  icon="pi pi-filter-slash"
+                  className="profile-history-filter-clear"
+                  outlined
+                  onClick={() => {
+                    setAppointmentSearchTerm('');
+                    setAppointmentStatusFilter('');
+                    setAppointmentDateFilter(null);
+                  }}
+                  disabled={!hasAppointmentFilters}
+                />
+              </div>
             )}
-          </div>
-        )}
 
-      </div>
+            {appointments.length === 0 ? (
+              <div className="profile-empty-state">
+                <i className="pi pi-calendar-times" />
+                <h3>Không tìm thấy lịch hẹn</h3>
+                <p>Bạn chưa đặt lịch khám nào trên hệ thống.</p>
+              </div>
+            ) : filteredAppointments.length === 0 ? (
+              <div className="profile-empty-state">
+                <i className="pi pi-search" />
+                <h3>Không tìm thấy lịch hẹn phù hợp</h3>
+                <p>Thử đổi từ khóa, trạng thái hoặc ngày khám để xem thêm kết quả.</p>
+              </div>
+            ) : (
+              <div className="profile-appointment-list">
+                {filteredAppointments.map((appointment) => {
+                  const status = displayStatus(appointment.status);
+                  return (
+                    <article key={appointment.id} className="profile-appointment-card">
+                      <div className="profile-appointment-card__main">
+                        <div className="profile-appointment-card__topline">
+                          <span className={`profile-status-pill ${getStatusClassName(appointment.status)}`}>{status.label}</span>
+                          <span>Đặt lúc {formatDateTime(appointment.createdAt)}</span>
+                        </div>
+                        <h3>Lịch khám của bạn</h3>
+                        <div className="profile-appointment-card__doctor">
+                          <i className="pi pi-user" />
+                          <span>{getDoctorName(appointment.doctorId)}</span>
+                        </div>
+                        <div className="profile-appointment-card__time">
+                          <i className="pi pi-clock" />
+                          <span>{formatSlotTime(appointment.startTime, appointment.endTime)}</span>
+                        </div>
+                        {appointment.reason && <p>{appointment.reason}</p>}
+                      </div>
+
+                      <div className="profile-appointment-card__actions">
+                        <Button
+                          label="Chi tiết"
+                          icon="pi pi-info-circle"
+                          className="profile-appointment-card__detail"
+                          outlined
+                          onClick={() => handleOpenAppointmentDetail(appointment)}
+                        />
+                        <Button
+                          label="Đổi lịch"
+                          icon="pi pi-calendar-plus"
+                          className="profile-appointment-card__detail profile-appointment-card__secondary"
+                          outlined
+                          onClick={() => handleOpenReschedule(appointment)}
+                        />
+                        <Button
+                          label="Hủy lịch"
+                          icon="pi pi-times"
+                          severity="danger"
+                          className="profile-appointment-card__detail profile-appointment-card__danger"
+                          outlined
+                          onClick={() => handleOpenCancel(appointment)}
+                        />
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+      </section>
+
+      <Dialog
+        visible={showAppointmentDetail}
+        showHeader={false}
+        modal
+        dismissableMask
+        className="profile-appointment-dialog"
+        onHide={handleCloseAppointmentDetail}
+      >
+        {selectedAppointment && (
+          <section className="profile-detail">
+            <header className="profile-detail__header">
+              <div>
+                <span>Chi tiết lịch hẹn</span>
+                <h2>Lịch khám của bạn</h2>
+                <p>Đặt lúc {formatDateTime(selectedAppointment.createdAt)}</p>
+              </div>
+              <button
+                type="button"
+                className="profile-detail__close"
+                aria-label="Đóng chi tiết lịch hẹn"
+                onClick={handleCloseAppointmentDetail}
+              >
+                <i className="pi pi-times" />
+              </button>
+            </header>
+
+            <div className="profile-detail__body">
+              {loadingAppointmentDetail && (
+                <div className="profile-detail__loading">
+                  <i className="pi pi-spin pi-spinner" />
+                  <span>Đang tải chi tiết lịch hẹn...</span>
+                </div>
+              )}
+
+              {appointmentDetailError && (
+                <div className="profile-alert profile-alert--error">
+                  <i className="pi pi-exclamation-circle" />
+                  <span>{appointmentDetailError}</span>
+                </div>
+              )}
+
+              <div className="profile-detail__summary">
+                <span className={`profile-status-pill ${getStatusClassName(selectedAppointment.status)}`}>
+                  {displayStatus(selectedAppointment.status).label}
+                </span>
+                <strong>{formatSlotTime(selectedAppointment.startTime, selectedAppointment.endTime)}</strong>
+              </div>
+
+              <dl className="profile-detail__grid">
+                <div>
+                  <dt>Bác sĩ</dt>
+                  <dd>{getDoctorName(selectedAppointment.doctorId)}</dd>
+                </div>
+                <div>
+                  <dt>Chuyên khoa</dt>
+                  <dd>{selectedAppointmentDoctor?.specialization ?? 'Đang cập nhật'}</dd>
+                </div>
+                <div>
+                  <dt>Thanh toán</dt>
+                  <dd>{selectedAppointment.paymentStatus ? paymentLabels[selectedAppointment.paymentStatus] ?? selectedAppointment.paymentStatus : 'Chưa cập nhật'}</dd>
+                </div>
+                <div>
+                  <dt>Nguồn đặt</dt>
+                  <dd>{selectedAppointment.bookingSource ?? 'WEB'}</dd>
+                </div>
+                <div className="profile-detail__wide">
+                  <dt>Lý do khám</dt>
+                  <dd>{selectedAppointment.reason || 'Chưa nhập lý do khám'}</dd>
+                </div>
+                {selectedAppointment.cancelReason && (
+                  <div className="profile-detail__wide">
+                    <dt>Lý do hủy</dt>
+                    <dd>{selectedAppointment.cancelReason}</dd>
+                  </div>
+                )}
+                {selectedAppointment.cancelledAt && (
+                  <div className="profile-detail__wide">
+                    <dt>Thời điểm hủy</dt>
+                    <dd>{formatDateTime(selectedAppointment.cancelledAt)}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          </section>
+        )}
+      </Dialog>
+
+      <Dialog
+        visible={showCancelDialog}
+        header="Hủy lịch hẹn"
+        modal
+        dismissableMask={!submittingCancel}
+        className="profile-action-dialog"
+        onHide={handleCloseCancel}
+      >
+        {actionAppointment && (
+          <section className="profile-action-modal">
+            <div className="profile-action-summary">
+              <strong>{getDoctorName(actionAppointment.doctorId)}</strong>
+              <span>{formatSlotTime(actionAppointment.startTime, actionAppointment.endTime)}</span>
+            </div>
+
+            <label className="profile-field" htmlFor="cancelReason">
+              <span>Lý do hủy</span>
+              <InputTextarea
+                id="cancelReason"
+                value={cancelReason}
+                onChange={(event) => setCancelReason(event.target.value)}
+                rows={4}
+                autoResize
+                placeholder="Nhập lý do hủy lịch hẹn"
+              />
+            </label>
+
+            {cancelError && (
+              <div className="profile-alert profile-alert--error">
+                <i className="pi pi-exclamation-circle" />
+                <span>{cancelError}</span>
+              </div>
+            )}
+
+            <div className="profile-action-footer">
+              <Button
+                label="Đóng"
+                icon="pi pi-times"
+                outlined
+                onClick={handleCloseCancel}
+                disabled={submittingCancel}
+              />
+              <Button
+                label={submittingCancel ? 'Đang hủy...' : 'Xác nhận hủy'}
+                icon="pi pi-check"
+                severity="danger"
+                onClick={handleSubmitCancel}
+                disabled={submittingCancel || !cancelReason.trim()}
+              />
+            </div>
+          </section>
+        )}
+      </Dialog>
+
+      <Dialog
+        visible={showRescheduleDialog}
+        header="Đổi khung giờ khám"
+        modal
+        dismissableMask={!submittingReschedule}
+        className="profile-action-dialog profile-action-dialog--wide"
+        onHide={handleCloseReschedule}
+      >
+        {actionAppointment && (
+          <section className="profile-action-modal">
+            <div className="profile-action-summary">
+              <strong>Lịch hiện tại</strong>
+              <span>Bác sĩ hiện tại: {getDoctorName(actionAppointment.doctorId)}</span>
+              <span>Chuyên khoa: {getAppointmentSpecialization(actionAppointment)}</span>
+              <span>Ngày giờ hiện tại: {formatSlotTime(actionAppointment.startTime, actionAppointment.endTime)}</span>
+            </div>
+
+            <label className="profile-field" htmlFor="rescheduleDate">
+              <span>Ngày mới</span>
+              <Calendar
+                inputId="rescheduleDate"
+                value={selectedVisitDate}
+                onChange={(event) => {
+                  setSelectedVisitDate(event.value instanceof Date ? event.value : null);
+                  setSelectedSlotKey('');
+                }}
+                showIcon
+                dateFormat="dd/mm/yy"
+                minDate={new Date()}
+                placeholder="Chọn ngày mới"
+                disabled={submittingReschedule}
+              />
+            </label>
+
+            {!selectedVisitDate ? (
+              <div className="profile-empty-state profile-empty-state--compact">
+                <i className="pi pi-calendar-plus" />
+                <h3>Chọn ngày mới</h3>
+                <p>Chọn ngày khám mới để xem các khung giờ còn bác sĩ trống.</p>
+              </div>
+            ) : loadingSlots ? (
+              <div className="profile-detail__loading">
+                <i className="pi pi-spin pi-spinner" />
+                <span>Đang tải khung giờ trống...</span>
+              </div>
+            ) : availableSlots.length ? (
+              <div className="profile-slot-list" role="listbox" aria-label="Khung giờ trống">
+                {availableSlots.map((slot) => {
+                  const slotKey = getRescheduleSlotKey(slot);
+                  return (
+                    <button
+                      key={slotKey}
+                      type="button"
+                      className={`profile-slot-option${selectedSlotKey === slotKey ? ' is-selected' : ''}`}
+                      onClick={() => setSelectedSlotKey(slotKey)}
+                      role="option"
+                      aria-selected={selectedSlotKey === slotKey}
+                    >
+                      <span>{formatSlotTime(slot.startTime, slot.endTime)}</span>
+                      <small>Còn {slot.availableCount} bác sĩ</small>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="profile-empty-state profile-empty-state--compact">
+                <i className="pi pi-calendar-times" />
+                <h3>Không còn bác sĩ trống trong ngày này</h3>
+                <p>Chọn ngày khác để xem thêm khung giờ đổi lịch.</p>
+              </div>
+            )}
+
+            <label className="profile-field" htmlFor="rescheduleReason">
+              <span>Lý do đổi lịch</span>
+              <InputTextarea
+                id="rescheduleReason"
+                value={rescheduleReason}
+                onChange={(event) => setRescheduleReason(event.target.value)}
+                rows={3}
+                autoResize
+                placeholder="Nhập lý do nếu cần"
+              />
+            </label>
+
+            {rescheduleError && (
+              <div className="profile-alert profile-alert--error">
+                <i className="pi pi-exclamation-circle" />
+                <span>{rescheduleError}</span>
+              </div>
+            )}
+
+            <div className="profile-action-footer">
+              <Button
+                label="Đóng"
+                icon="pi pi-times"
+                outlined
+                onClick={handleCloseReschedule}
+                disabled={submittingReschedule}
+              />
+              <Button
+                label={submittingReschedule ? 'Đang đổi lịch...' : 'Xác nhận đổi lịch'}
+                icon="pi pi-check"
+                onClick={handleSubmitReschedule}
+                disabled={submittingReschedule || loadingSlots || !selectedRescheduleSlot}
+              />
+            </div>
+          </section>
+        )}
+      </Dialog>
     </AppLayout>
   );
 };
