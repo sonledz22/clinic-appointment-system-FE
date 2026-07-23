@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
 import { Button } from 'primereact/button';
+import { Calendar } from 'primereact/calendar';
+import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
@@ -10,10 +13,17 @@ import AppLayout from '@/components/layout/AppLayout';
 import { appIcons } from '@/constants/appIcons';
 import { APP_ROUTES } from '@/constants/appRoutes';
 import { createAppointment } from '@/features/appointments/services/appointmentApi';
-import { fetchDoctorSlots, fetchDoctorSpecializations, fetchDoctors, fetchDoctorsBySpecialization, mapDoctorToCard } from '@/features/doctors/services/doctorApi';
-import type { Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
+import {
+  fetchAvailableSlotsBySpecialization,
+  fetchDoctorSpecializations,
+  fetchDoctors,
+  mapDoctorToCard,
+} from '@/features/doctors/services/doctorApi';
+import { paymentApi, type PaymentResponse, type PaymentTiming } from '@/features/payments/services/paymentApi';
+import { buildVietQrTransferContent, buildVietQrUrl } from '@/features/payments/utils/vietQr';
+import type { Appointment } from '@/features/appointments/types/appointment.types';
+import type { AvailableSlot, DoctorCardViewModel } from '@/features/doctors/types/doctor';
 import { hospitals } from '@/mocks/hospitals';
-import { useAuthStore } from '@/stores/auth.store';
 
 export interface HomePageProps {}
 
@@ -109,7 +119,7 @@ const slotTimeFormatter = new Intl.DateTimeFormat('vi-VN', {
 
 const isValidDate = (date: Date) => !Number.isNaN(date.getTime());
 
-const formatSlotLabel = (slot: Slot) => {
+const formatSlotLabel = (slot: AvailableSlot) => {
   const startTime = new Date(slot.startTime);
   const endTime = new Date(slot.endTime);
 
@@ -117,30 +127,57 @@ const formatSlotLabel = (slot: Slot) => {
     return `${slot.startTime} - ${slot.endTime}`;
   }
 
-  return `${slotDateFormatter.format(startTime)} - ${slotTimeFormatter.format(startTime)} - ${slotTimeFormatter.format(endTime)}`;
+  return `${slotTimeFormatter.format(startTime)} - ${slotTimeFormatter.format(endTime)} ngày ${slotDateFormatter.format(startTime)}`;
 };
 
+const formatCurrency = (amount: number, currency = 'VND') =>
+  new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount);
+
+const paymentLabels: Record<string, string> = {
+  PENDING: 'Chờ thanh toán',
+  PAID: 'Đã thanh toán',
+  FAILED: 'Thanh toán lỗi',
+  CANCELLED: 'Đã hủy',
+  REFUNDED: 'Đã hoàn tiền',
+};
+
+const formatDateForApi = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getSlotKey = (slot: AvailableSlot) => `${slot.startTime}|${slot.endTime}`;
+
 const HomePage = ({}: Readonly<HomePageProps>) => {
-  const today = new Date().toISOString().slice(0, 10);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorCardViewModel | null>(null);
   const [featuredDoctorsSource, setFeaturedDoctorsSource] = useState<DoctorCardViewModel[]>([]);
   const [specializationOptions, setSpecializationOptions] = useState<string[]>([]);
-  const [quickDoctors, setQuickDoctors] = useState<Doctor[]>([]);
-  const [doctorSlots, setDoctorSlots] = useState<Slot[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('');
-  const [selectedQuickDoctorId, setSelectedQuickDoctorId] = useState<string>('');
-  const [selectedSlotId, setSelectedSlotId] = useState<string>('');
+  const [selectedVisitDate, setSelectedVisitDate] = useState<Date | null>(null);
+  const [selectedSlotKey, setSelectedSlotKey] = useState<string>('');
   const [bookingReason, setBookingReason] = useState('');
   const [loadingSpecializations, setLoadingSpecializations] = useState(false);
-  const [loadingDoctors, setLoadingDoctors] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [loadingFeaturedDoctors, setLoadingFeaturedDoctors] = useState(false);
   const [creatingAppointment, setCreatingAppointment] = useState(false);
   const [quickBookingError, setQuickBookingError] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [createdAppointment, setCreatedAppointment] = useState<Appointment | null>(null);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [payment, setPayment] = useState<PaymentResponse | null>(null);
+  const [creatingPayment, setCreatingPayment] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [paymentChoiceCompleted, setPaymentChoiceCompleted] = useState(false);
   const [favoriteDoctorIds, setFavoriteDoctorIds] = useState<string[]>([]);
-  const currentUser = useAuthStore((state) => state.user);
 
   useEffect(() => {
     let isActive = true;
@@ -193,65 +230,33 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
   useEffect(() => {
     let isActive = true;
 
-    setSelectedQuickDoctorId('');
-    setSelectedSlotId('');
-    setQuickDoctors([]);
-    setDoctorSlots([]);
+    setSelectedSlotKey('');
+    setAvailableSlots([]);
     setBookingSuccess(false);
+    setCreatedAppointment(null);
+    setShowPaymentDialog(false);
+    setPayment(null);
+    setPaymentError('');
+    setCreatingPayment(false);
+    setConfirmingPayment(false);
+    setPaymentChoiceCompleted(false);
     setQuickBookingError('');
 
-    if (!selectedSpecialty) {
-      return () => {
-        isActive = false;
-      };
-    }
-
-    setLoadingDoctors(true);
-    fetchDoctorsBySpecialization(selectedSpecialty)
-      .then((matchedDoctors) => {
-        if (!isActive) return;
-        setQuickDoctors(matchedDoctors);
-      })
-      .catch(() => {
-        if (!isActive) return;
-        setQuickBookingError('Không thể tải danh sách bác sĩ theo chuyên khoa.');
-      })
-      .finally(() => {
-        if (!isActive) return;
-        setLoadingDoctors(false);
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [selectedSpecialty]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    setSelectedSlotId('');
-    setDoctorSlots([]);
-    setBookingSuccess(false);
-    setQuickBookingError('');
-
-    if (!selectedQuickDoctorId) {
+    if (!selectedSpecialty || !selectedVisitDate) {
       return () => {
         isActive = false;
       };
     }
 
     setLoadingSlots(true);
-    fetchDoctorSlots(selectedQuickDoctorId, {
-      fromDate: today,
-      status: 'AVAILABLE',
-    })
+    fetchAvailableSlotsBySpecialization(selectedSpecialty, formatDateForApi(selectedVisitDate))
       .then((slots) => {
         if (!isActive) return;
-        setDoctorSlots(slots);
+        setAvailableSlots(slots);
       })
       .catch(() => {
         if (!isActive) return;
-        setQuickBookingError('Không thể tải slot của bác sĩ đã chọn.');
+        setQuickBookingError('Không thể tải khung giờ trống theo chuyên khoa và ngày đã chọn.');
       })
       .finally(() => {
         if (!isActive) return;
@@ -261,7 +266,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     return () => {
       isActive = false;
     };
-  }, [selectedQuickDoctorId, today]);
+  }, [selectedSpecialty, selectedVisitDate]);
 
   const featuredDoctors = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
@@ -283,40 +288,44 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     [specializationOptions],
   );
 
-  const doctorOptions = useMemo(
-    () =>
-      quickDoctors
-        .filter((doctor) => doctor.active)
-        .map((doctor) => ({
-          label: `${doctor.name} - ${doctor.specialization}`,
-          value: doctor.id,
-        })),
-    [quickDoctors],
-  );
-
   const slotOptions = useMemo(
     () =>
-      [...doctorSlots]
-        .filter((slot) => !slot.booked && slot.status !== 'BOOKED' && slot.status !== 'RESERVED' && slot.status !== 'BLOCKED')
+      [...availableSlots]
+        .filter((slot) => slot.availableCount > 0)
         .sort((firstSlot, secondSlot) => new Date(firstSlot.startTime).getTime() - new Date(secondSlot.startTime).getTime())
         .map((slot) => ({
-          label: formatSlotLabel(slot),
-          value: slot.id,
+          label: `${formatSlotLabel(slot)} - còn ${slot.availableCount} bác sĩ`,
+          value: getSlotKey(slot),
         })),
-    [doctorSlots],
-  );
-
-  const selectedQuickDoctor = useMemo(
-    () => quickDoctors.find((doctor) => doctor.id === selectedQuickDoctorId) ?? null,
-    [quickDoctors, selectedQuickDoctorId],
+    [availableSlots],
   );
 
   const selectedSlot = useMemo(
-    () => doctorSlots.find((slot) => slot.id === selectedSlotId) ?? null,
-    [doctorSlots, selectedSlotId],
+    () => availableSlots.find((slot) => getSlotKey(slot) === selectedSlotKey) ?? null,
+    [availableSlots, selectedSlotKey],
   );
+  const paymentQrUrl = useMemo(() => payment ? buildVietQrUrl(payment.amount, payment.id) : '', [payment]);
+  const paymentTransferContent = payment ? buildVietQrTransferContent(payment.id) : '';
 
-  const bookingReady = Boolean(selectedSpecialty && selectedQuickDoctorId && selectedSlotId);
+  const bookingReady = Boolean(selectedSpecialty && selectedVisitDate && selectedSlot);
+  const waitingPaymentChoice = Boolean(createdAppointment && !paymentChoiceCompleted && !bookingSuccess);
+
+  const getApiErrorMessage = (reason: unknown, fallback: string) => {
+    if (axios.isAxiosError(reason) && typeof reason.response?.data?.message === 'string') {
+      return reason.response.data.message;
+    }
+
+    return fallback;
+  };
+
+  const resetPaymentFlow = () => {
+    setShowPaymentDialog(false);
+    setPayment(null);
+    setPaymentError('');
+    setCreatingPayment(false);
+    setConfirmingPayment(false);
+    setPaymentChoiceCompleted(false);
+  };
 
   const handleBook = (doctor: DoctorCardViewModel) => {
     setSelectedDoctor(doctor);
@@ -324,40 +333,109 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
       setSelectedSpecialty(doctor.specialty);
     }
     setBookingSuccess(false);
+    setCreatedAppointment(null);
+    resetPaymentFlow();
   };
 
   const handleSubmit = async () => {
-    if (!bookingReady) return;
+    if (!selectedSpecialty || !selectedVisitDate || !selectedSlot) return;
 
     const effectivePatientId = currentUser?.patientId ?? currentUser?.userId ?? currentUser?.id;
-    if (!effectivePatientId) {
-      setQuickBookingError('Không tìm thấy tài khoản. Vui lòng đăng nhập lại.');
-      return;
-    }
 
     setCreatingAppointment(true);
     setQuickBookingError('');
     setBookingSuccess(false);
+    setPaymentChoiceCompleted(false);
+    setPayment(null);
+    setPaymentError('');
 
     try {
       const reason = bookingReason.trim();
-      await createAppointment({
-        specialization: selectedSpecialty || selectedQuickDoctor?.specialty || 'General',
-        startTime: selectedSlot?.startTime || new Date().toISOString(),
-        endTime: selectedSlot?.endTime || new Date(Date.now() + 1800000).toISOString(),
+      const appointment = await createAppointment({
+        specialization: selectedSpecialty,
+        startTime: selectedSlot.startTime,
+        endTime: selectedSlot.endTime,
         patientId: effectivePatientId,
-        doctorId: selectedQuickDoctorId,
-        slotId: selectedSlotId,
         rescheduledFromAppointmentId: null,
         ...(reason ? { reason } : {}),
         bookingSource: 'WEB',
       });
-      setBookingSuccess(true);
-    } catch {
-      setQuickBookingError('Không thể tạo lịch khám. Vui lòng kiểm tra slot và thử lại.');
+        ...(reason ? { reason } : {}),
+        bookingSource: 'WEB',
+      });
+      setCreatedAppointment(appointment);
+      setShowPaymentDialog(true);
+    } catch (reason) {
+      setQuickBookingError('Không thể tạo lịch khám. Vui lòng kiểm tra chuyên khoa, ngày và khung giờ rồi thử lại.');
     } finally {
       setCreatingAppointment(false);
     }
+  };
+
+  const handleCreatePayment = async (paymentTiming: PaymentTiming) => {
+    if (!createdAppointment) return;
+
+    setCreatingPayment(true);
+    setPaymentError('');
+
+    try {
+      const createdPayment = await paymentApi.createPayment({
+        appointmentId: createdAppointment.id,
+        paymentTiming,
+      });
+
+      setPayment(createdPayment);
+
+      if (paymentTiming === 'PAY_LATER') {
+        setPaymentChoiceCompleted(true);
+        setBookingSuccess(true);
+        setShowPaymentDialog(false);
+      }
+    } catch (reason) {
+      if (axios.isAxiosError(reason) && reason.response?.status === 409) {
+        try {
+          const existingPayment = await paymentApi.getPaymentByAppointment(createdAppointment.id);
+          setPayment(existingPayment);
+
+          if (paymentTiming === 'PAY_LATER') {
+            setPaymentChoiceCompleted(true);
+            setBookingSuccess(true);
+            setShowPaymentDialog(false);
+          }
+        } catch (lookupReason) {
+          setPaymentError(getApiErrorMessage(lookupReason, 'Không thể tải thông tin thanh toán đã tạo.'));
+        }
+      } else {
+        setPaymentError(getApiErrorMessage(reason, 'Không thể tạo thanh toán. Vui lòng thử lại.'));
+      }
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!payment) return;
+
+    setConfirmingPayment(true);
+    setPaymentError('');
+
+    try {
+      const updatedPayment = await paymentApi.confirmPaid(payment.id);
+      setPayment(updatedPayment);
+      setPaymentChoiceCompleted(true);
+      setBookingSuccess(true);
+      setShowPaymentDialog(false);
+    } catch (reason) {
+      setPaymentError(getApiErrorMessage(reason, 'Không thể xác nhận thanh toán. Vui lòng thử lại.'));
+    } finally {
+      setConfirmingPayment(false);
+    }
+  };
+
+  const handleClosePaymentDialog = () => {
+    if (creatingPayment || confirmingPayment) return;
+    setShowPaymentDialog(false);
+    setPaymentError('');
   };
 
   const renderQuickOption = (option: QuickSelectOption, selectedValue: string) => (
@@ -446,10 +524,10 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
 
           <aside className="quick-booking-card" aria-labelledby="quick-booking-title">
             <h2 id="quick-booking-title">Đặt lịch khám nhanh</h2>
-            <p className="quick-booking-card__subtitle">Chọn chuyên khoa, bác sĩ và slot khám phù hợp</p>
+            <p className="quick-booking-card__subtitle">Chọn chuyên khoa, ngày khám và khung giờ còn bác sĩ trống</p>
             <div className="quick-booking-card__field">
               <label htmlFor="quick-specialty">
-                Chuyên khoa
+                1. Chuyên khoa
               </label>
               <Dropdown
                 className="quick-booking-card__select"
@@ -463,59 +541,92 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
                 valueTemplate={(option) =>
                   renderQuickValue(option, loadingSpecializations ? 'Đang tải chuyên khoa...' : specializationOptions.length ? 'Chọn chuyên khoa' : 'Không có chuyên khoa')
                 }
-                onChange={(event) => setSelectedSpecialty(event.value ?? '')}
+                onChange={(event) => {
+                  setSelectedSpecialty(event.value ?? '');
+                  setBookingSuccess(false);
+                  setCreatedAppointment(null);
+                  resetPaymentFlow();
+                }}
                 placeholder={loadingSpecializations ? 'Đang tải chuyên khoa...' : specializationOptions.length ? 'Chọn chuyên khoa' : 'Không có chuyên khoa'}
                 disabled={loadingSpecializations || !specializationOptions.length}
                 loading={loadingSpecializations}
               />
             </div>
             <div className="quick-booking-card__field">
-              <label htmlFor="quick-doctor">
-                Bác sĩ
+              <label htmlFor="quick-date">
+                2. Ngày khám
               </label>
-              <Dropdown
+              <Calendar
+                inputId="quick-date"
                 className="quick-booking-card__select"
-                panelClassName="quick-booking-card__dropdown-panel"
-                inputId="quick-doctor"
-                value={selectedQuickDoctorId}
-                options={doctorOptions}
-                optionLabel="label"
-                optionValue="value"
-                itemTemplate={(option) => renderQuickOption(option, selectedQuickDoctorId)}
-                valueTemplate={(option) =>
-                  renderQuickValue(option, !selectedSpecialty ? 'Chọn chuyên khoa trước' : loadingDoctors ? 'Đang tải bác sĩ...' : doctorOptions.length ? 'Chọn bác sĩ' : 'Không có bác sĩ phù hợp')
-                }
-                onChange={(event) => setSelectedQuickDoctorId(event.value ?? '')}
-                placeholder={!selectedSpecialty ? 'Chọn chuyên khoa trước' : loadingDoctors ? 'Đang tải bác sĩ...' : doctorOptions.length ? 'Chọn bác sĩ' : 'Không có bác sĩ phù hợp'}
-                disabled={!selectedSpecialty || loadingDoctors || !doctorOptions.length}
-                loading={loadingDoctors}
+                value={selectedVisitDate}
+                onChange={(event) => {
+                  setSelectedVisitDate(event.value instanceof Date ? event.value : null);
+                  setBookingSuccess(false);
+                  setCreatedAppointment(null);
+                  resetPaymentFlow();
+                }}
+                placeholder={!selectedSpecialty ? 'Chọn chuyên khoa trước' : 'Chọn ngày khám'}
+                dateFormat="dd/mm/yy"
+                minDate={new Date()}
+                showIcon
+                disabled={!selectedSpecialty}
               />
             </div>
             <div className="quick-booking-card__field">
               <label htmlFor="quick-slot">
-                Slot khám
+                Khung giờ khám
               </label>
               <Dropdown
                 className="quick-booking-card__select"
                 panelClassName="quick-booking-card__dropdown-panel"
                 inputId="quick-slot"
-                value={selectedSlotId}
+                value={selectedSlotKey}
                 options={slotOptions}
                 optionLabel="label"
                 optionValue="value"
-                itemTemplate={(option) => renderQuickOption(option, selectedSlotId)}
+                itemTemplate={(option) => renderQuickOption(option, selectedSlotKey)}
                 valueTemplate={(option) =>
-                  renderQuickValue(option, !selectedQuickDoctorId ? 'Chọn bác sĩ trước' : loadingSlots ? 'Đang tải slot...' : slotOptions.length ? 'Chọn slot còn trống' : 'Không có slot trống')
+                  renderQuickValue(
+                    option,
+                    !selectedSpecialty
+                      ? 'Chọn chuyên khoa trước'
+                      : !selectedVisitDate
+                      ? 'Chọn ngày khám trước'
+                      : loadingSlots
+                      ? 'Đang tải khung giờ...'
+                      : slotOptions.length
+                      ? 'Chọn khung giờ còn trống'
+                      : 'Không còn bác sĩ trống trong ngày này',
+                  )
                 }
-                onChange={(event) => setSelectedSlotId(event.value ?? '')}
-                placeholder={!selectedQuickDoctorId ? 'Chọn bác sĩ trước' : loadingSlots ? 'Đang tải slot...' : slotOptions.length ? 'Chọn slot còn trống' : 'Không có slot trống'}
-                disabled={!selectedQuickDoctorId || loadingSlots || !slotOptions.length}
+                onChange={(event) => {
+                  setSelectedSlotKey(event.value ?? '');
+                  setBookingSuccess(false);
+                  setCreatedAppointment(null);
+                  resetPaymentFlow();
+                }}
+                placeholder={
+                  !selectedSpecialty
+                    ? 'Chọn chuyên khoa trước'
+                    : !selectedVisitDate
+                    ? 'Chọn ngày khám trước'
+                    : loadingSlots
+                    ? 'Đang tải khung giờ...'
+                    : slotOptions.length
+                    ? 'Chọn khung giờ còn trống'
+                    : 'Không còn bác sĩ trống trong ngày này'
+                }
+                disabled={!selectedSpecialty || !selectedVisitDate || loadingSlots || !slotOptions.length}
                 loading={loadingSlots}
               />
+              {selectedSpecialty && selectedVisitDate && !loadingSlots && !slotOptions.length && !quickBookingError ? (
+                <small className="quick-booking-card__empty-slot">Không còn bác sĩ trống trong ngày này.</small>
+              ) : null}
             </div>
             <div className="quick-booking-card__field">
               <label htmlFor="quick-reason">
-                Lý do khám
+                3. Lý do khám
               </label>
               <InputTextarea
                 id="quick-reason"
@@ -524,6 +635,8 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
                 onChange={(event) => {
                   setBookingReason(event.target.value);
                   setBookingSuccess(false);
+                  setCreatedAppointment(null);
+                  resetPaymentFlow();
                 }}
                 placeholder="Nhập lý do khám nếu cần"
                 maxLength={500}
@@ -539,19 +652,23 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
                 {quickBookingError}
               </div>
             ) : null}
-            {bookingSuccess && selectedQuickDoctor && selectedSlot ? (
+            {bookingSuccess && selectedSlot ? (
               <div className="success-message quick-booking-card__success">
                 <i className="pi pi-check-circle" aria-hidden="true" />
-                Đặt lịch khám thành công với {selectedQuickDoctor.name} vào {formatSlotLabel(selectedSlot)}. Lịch hẹn đã được xác nhận.
+                <span>
+                  Đã xác nhận lịch khám thành công vào {formatSlotLabel(selectedSlot)}.
+                  {payment?.paymentTiming === 'PAY_LATER' ? ' Thanh toán tại phòng khám.' : ''}
+                  {payment?.status === 'PAID' ? ' Đã thanh toán.' : ''}
+                </span>
               </div>
             ) : null}
             <Button
-              label="Đặt lịch"
+              label={waitingPaymentChoice ? 'Chọn thanh toán' : 'Đặt lịch'}
               icon="pi pi-arrow-right"
               iconPos="right"
-              onClick={handleSubmit}
+              onClick={waitingPaymentChoice ? () => setShowPaymentDialog(true) : handleSubmit}
               loading={creatingAppointment}
-              disabled={!bookingReady || loadingDoctors || loadingSlots || creatingAppointment}
+              disabled={!bookingReady || loadingSlots || creatingAppointment}
             />
           </aside>
         </section>
@@ -715,6 +832,92 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
           </div>
         </section>
       </div>
+
+      <Dialog
+        visible={showPaymentDialog}
+        header="Thanh toán lịch khám"
+        modal
+        dismissableMask={!creatingPayment && !confirmingPayment}
+        className="profile-action-dialog profile-payment-dialog"
+        onHide={handleClosePaymentDialog}
+      >
+        {createdAppointment && selectedSlot ? (
+          <section className="profile-action-modal profile-payment-modal">
+            <div className="profile-action-summary">
+              <strong>Lịch khám vừa tạo</strong>
+              <span>{formatSlotLabel(selectedSlot)}</span>
+            </div>
+
+            {!payment ? (
+              <div className="booking-payment-choice">
+                <Button
+                  label={creatingPayment ? 'Đang tạo thanh toán...' : 'Thanh toán ngay'}
+                  icon="pi pi-qrcode"
+                  onClick={() => handleCreatePayment('PAY_NOW')}
+                  disabled={creatingPayment}
+                />
+                <Button
+                  label="Thanh toán tại phòng khám"
+                  icon="pi pi-building"
+                  outlined
+                  onClick={() => handleCreatePayment('PAY_LATER')}
+                  disabled={creatingPayment}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="profile-payment-qr">
+                  <img
+                    src={paymentQrUrl}
+                    alt="QR thanh toán MB Bank"
+                    width={320}
+                  />
+                </div>
+
+                <dl className="profile-payment-info">
+                  <div>
+                    <dt>Số tiền</dt>
+                    <dd>{formatCurrency(payment.amount, payment.currency)}</dd>
+                  </div>
+                  <div>
+                    <dt>Nội dung chuyển khoản</dt>
+                    <dd>{paymentTransferContent}</dd>
+                  </div>
+                  <div>
+                    <dt>Trạng thái</dt>
+                    <dd>{paymentLabels[payment.status] ?? payment.status}</dd>
+                  </div>
+                </dl>
+              </>
+            )}
+
+            {paymentError ? (
+              <div className="profile-alert profile-alert--error">
+                <i className="pi pi-exclamation-circle" />
+                <span>{paymentError}</span>
+              </div>
+            ) : null}
+
+            <div className="profile-action-footer">
+              <Button
+                label="Đóng"
+                icon="pi pi-times"
+                outlined
+                onClick={handleClosePaymentDialog}
+                disabled={creatingPayment || confirmingPayment}
+              />
+              {payment ? (
+                <Button
+                  label={confirmingPayment ? 'Đang xác nhận...' : 'Tôi đã thanh toán'}
+                  icon="pi pi-check"
+                  onClick={handleConfirmPayment}
+                  disabled={creatingPayment || confirmingPayment || payment.status === 'PAID'}
+                />
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+      </Dialog>
     </AppLayout>
   );
 };

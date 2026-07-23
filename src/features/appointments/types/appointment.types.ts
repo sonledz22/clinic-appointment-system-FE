@@ -15,6 +15,9 @@ export interface Appointment {
   patientId: string;
   doctorId: string;
   slotId: string;
+  specialization?: string;
+  startTime?: string;
+  endTime?: string;
   rescheduledFromAppointmentId?: string | null;
   reason?: string | null;
   bookingSource?: string | null;

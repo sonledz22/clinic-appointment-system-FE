@@ -104,7 +104,7 @@
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 12px;
+  gap: 8px;
   margin-left: auto;
 }
 
@@ -183,16 +183,20 @@
 
 /* Legacy class kept for older page-level usages outside the main header. */
 .app-header__logout.p-button {
+  min-width: 112px;
   min-height: 38px;
-  color: var(--app-secondary);
-  border-color: #BFDBFE;
-  background: #FFFFFF;
+  padding: 0 12px;
+  gap: 6px;
+  color: #FFFFFF;
+  border-color: #DC2626;
+  background: #DC2626;
+  box-shadow: 0 10px 22px -18px rgba(220, 38, 38, 0.9);
 }
 
 .app-header__logout.p-button:enabled:hover {
-  color: var(--app-primary-dark);
-  border-color: var(--app-primary);
-  background: #F0F9FF;
+  color: #FFFFFF;
+  border-color: #B91C1C;
+  background: #B91C1C;
 }
 
 .app-header__menu-button {
@@ -255,7 +259,7 @@
   justify-content: space-between;
   gap: 24px;
   align-items: flex-start;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .page-header__eyebrow,
