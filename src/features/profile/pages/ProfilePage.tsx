@@ -9,8 +9,7 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import AppLayout from '@/components/layout/AppLayout';
 import PageHeader from '@/components/ui/PageHeader';
 import { useAuthStore } from '@/stores/auth.store';
-import { getMyAppointments } from '@/features/appointments/services/appointmentApi';
-import { profileApi, type AppointmentHistory, type DoctorSummary, type PatientProfile, type RescheduleOption, type UserProfile } from '@/features/profile/services/profileApi';
+import { profileApi, type AppointmentHistory, type DoctorSummary, type NotificationItem, type PatientProfile, type RescheduleOption, type UserProfile } from '@/features/profile/services/profileApi';
 import { paymentApi, type PaymentResponse } from '@/features/payments/services/paymentApi';
 import { buildVietQrTransferContent, buildVietQrUrl } from '@/features/payments/utils/vietQr';
 
@@ -111,7 +110,10 @@ const renderStatusTag = (status?: string) => {
 
 const ProfilePage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
-  const [activeTab, setActiveTab] = useState<'profile' | 'history'>('profile');
+  const recipientId = user?.userId ?? user?.id ?? '';
+  const [activeTab, setActiveTab] = useState<'profile' | 'history' | 'notifications'>('profile');
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [markingReadId, setMarkingReadId] = useState('');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [patientProfile, setPatientProfile] = useState<PatientProfile>(emptyPatientProfile);
   const [appointments, setAppointments] = useState<AppointmentHistory[]>([]);
@@ -220,10 +222,11 @@ const ProfilePage: React.FC = () => {
       setError('');
 
       try {
-        const [accountResult, patientResult, historyResult] = await Promise.allSettled([
+        const [accountResult, patientResult, historyResult, notificationsResult] = await Promise.allSettled([
           profileApi.getUserProfile(),
           profileApi.getPatientProfile(),
           profileApi.getAppointments(),
+          recipientId ? profileApi.getNotifications(recipientId) : Promise.resolve([]),
         ]);
 
         if (cancelled) {
@@ -240,6 +243,10 @@ const ProfilePage: React.FC = () => {
 
         if (historyResult.status === 'fulfilled') {
           setAppointments(historyResult.value);
+        }
+
+        if (notificationsResult.status === 'fulfilled') {
+          setNotifications(notificationsResult.value);
         }
       } catch {
         if (!cancelled) {
@@ -304,6 +311,30 @@ const ProfilePage: React.FC = () => {
     () => [...appointments].sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()),
     [appointments],
   );
+
+  const sortedNotifications = useMemo(
+    () => [...notifications].sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()),
+    [notifications],
+  );
+
+  const unreadNotificationCount = useMemo(
+    () => notifications.filter((item) => !item.readAt).length,
+    [notifications],
+  );
+
+  const handleMarkNotificationRead = async (notificationId: string) => {
+    setMarkingReadId(notificationId);
+    try {
+      const updated = await profileApi.markNotificationRead(notificationId);
+      setNotifications((current) => current.map((item) =>
+        item.id === notificationId ? { ...item, readAt: updated.readAt ?? new Date().toISOString() } : item,
+      ));
+    } catch {
+      // giữ nguyên trạng thái chưa đọc nếu lỗi
+    } finally {
+      setMarkingReadId('');
+    }
+  };
 
   const selectedRescheduleSlot = useMemo(
     () => availableSlots.find((slot) => getRescheduleSlotKey(slot) === selectedSlotKey) ?? null,
@@ -683,6 +714,17 @@ const ProfilePage: React.FC = () => {
             <span>Lịch sử đặt khám</span>
             {appointments.length > 0 && <strong>{appointments.length}</strong>}
           </button>
+          <button
+            type="button"
+            className={`profile-tab${activeTab === 'notifications' ? ' is-active' : ''}`}
+            onClick={() => setActiveTab('notifications')}
+            role="tab"
+            aria-selected={activeTab === 'notifications'}
+          >
+            <i className="pi pi-bell" />
+            <span>Thông báo</span>
+            {unreadNotificationCount > 0 && <strong>{unreadNotificationCount}</strong>}
+          </button>
         </div>
 
         {loading ? (
@@ -957,6 +999,68 @@ const ProfilePage: React.FC = () => {
                   );
                 })}
               </div>
+            )}
+          </section>
+        )}
+
+        {!loading && activeTab === 'notifications' && (
+          <section className="profile-history-panel">
+            <div className="profile-history-panel__header">
+              <div>
+                <h2>Thông báo</h2>
+                <p>
+                  {notifications.length
+                    ? `${notifications.length} thông báo · ${unreadNotificationCount} chưa đọc`
+                    : 'Chưa có thông báo nào'}
+                </p>
+              </div>
+            </div>
+
+            {notifications.length === 0 ? (
+              <div className="profile-empty-state">
+                <i className="pi pi-bell" />
+                <h3>Chưa có thông báo</h3>
+                <p>Các thông báo về lịch khám của bạn sẽ hiển thị ở đây.</p>
+              </div>
+            ) : (
+              <ul className="profile-notification-list">
+                {sortedNotifications.map((notification) => {
+                  const isUnread = !notification.readAt;
+                  return (
+                    <li
+                      key={notification.id}
+                      className={`profile-notification${isUnread ? ' is-unread' : ''}`}
+                    >
+                      <span className="profile-notification__icon" aria-hidden="true">
+                        <i className="pi pi-bell" />
+                      </span>
+                      <div className="profile-notification__body">
+                        <div className="profile-notification__head">
+                          <h3>{notification.title}</h3>
+                          <time>{formatDateTime(notification.createdAt)}</time>
+                        </div>
+                        {notification.body && <p>{notification.body}</p>}
+                      </div>
+                      <div className="profile-notification__action">
+                        {isUnread ? (
+                          <button
+                            type="button"
+                            className="profile-notification__mark"
+                            disabled={markingReadId === notification.id}
+                            onClick={() => handleMarkNotificationRead(notification.id)}
+                          >
+                            {markingReadId === notification.id ? 'Đang lưu...' : 'Đánh dấu đã đọc'}
+                          </button>
+                        ) : (
+                          <span className="profile-notification__read">
+                            <i className="pi pi-check" /> Đã đọc
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </section>
         )}
