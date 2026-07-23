@@ -9,6 +9,7 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import AppLayout from '@/components/layout/AppLayout';
 import PageHeader from '@/components/ui/PageHeader';
 import { useAuthStore } from '@/stores/auth.store';
+import { getMyAppointments } from '@/features/appointments/services/appointmentApi';
 import { profileApi, type AppointmentHistory, type DoctorSummary, type PatientProfile, type RescheduleOption, type UserProfile } from '@/features/profile/services/profileApi';
 import { paymentApi, type PaymentResponse } from '@/features/payments/services/paymentApi';
 import { buildVietQrTransferContent, buildVietQrUrl } from '@/features/payments/utils/vietQr';
@@ -30,10 +31,14 @@ const genderOptions = [
 ];
 
 const statusLabels: Record<string, { label: string; severity: 'success' | 'warning' | 'danger' | 'info' | 'secondary' }> = {
-  PENDING: { label: 'Đang chờ', severity: 'warning' },
-  PENDING_PAYMENT: { label: 'Chờ thanh toán', severity: 'warning' },
+  PENDING: { label: 'Đã xác nhận', severity: 'success' },
+  PENDING_DOCTOR_CONFIRMATION: { label: 'Đã xác nhận', severity: 'success' },
+  PENDING_PAYMENT: { label: 'Đã xác nhận', severity: 'success' },
   CONFIRMED: { label: 'Đã xác nhận', severity: 'success' },
-  COMPLETED: { label: 'Đã hoàn tất', severity: 'info' },
+  CHECKIN_SUCCESS: { label: 'Đang khám', severity: 'info' },
+  CHECKOUT_SUCCESS: { label: 'Đã khám xong', severity: 'success' },
+  COMPLETED: { label: 'Đã khám xong', severity: 'info' },
+  CANCELLED_BY_DOCTOR: { label: 'Bác sĩ đã hủy', severity: 'danger' },
   CANCELLED: { label: 'Đã hủy', severity: 'danger' },
 };
 
@@ -80,6 +85,30 @@ const isSameCalendarDate = (firstDate: Date, secondDate: Date) =>
   && firstDate.getMonth() === secondDate.getMonth()
   && firstDate.getDate() === secondDate.getDate();
 
+const renderStatusTag = (status?: string) => {
+  switch (status?.toUpperCase()) {
+    case 'CHECKIN_SUCCESS':
+      return <Tag value="Đang khám" severity="info" className="rounded bg-cyan-500 border-none text-white" />;
+    case 'CHECKOUT_SUCCESS':
+    case 'COMPLETED':
+      return <Tag value="Đã khám xong" severity="success" className="rounded bg-slate-600 border-none text-white" />;
+    case 'NOT_CHECKIN':
+      return <Tag value="Bệnh nhân không đến" severity="danger" className="rounded" />;
+    case 'CANCELLED_BY_DOCTOR':
+      return <Tag value="Bác sĩ đã hủy" severity="danger" className="rounded" />;
+    case 'CANCELLED':
+      return <Tag value="Đã hủy" severity="danger" className="rounded" />;
+    case 'CONFIRMED':
+    case 'BOOKED':
+    case 'PENDING_DOCTOR_CONFIRMATION':
+    case 'PENDING':
+    case 'PENDING_PAYMENT':
+    default:
+      return <Tag value="Đã xác nhận" severity="success" className="rounded" />;
+  }
+};
+
+
 const ProfilePage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const [activeTab, setActiveTab] = useState<'profile' | 'history'>('profile');
@@ -118,6 +147,53 @@ const ProfilePage: React.FC = () => {
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState('');
+
+  const appointmentsKey = `patient_appointments_${userInfo.id}`;
+
+  const loadAppointments = async () => {
+    let localList: AppointmentHistory[] = [];
+    const savedAppts = localStorage.getItem(appointmentsKey);
+    if (savedAppts) {
+      try {
+        localList = JSON.parse(savedAppts);
+      } catch (e) {
+        console.error('Error parsing appointments', e);
+      }
+    }
+
+    try {
+      const remoteList = await getMyAppointments();
+      if (Array.isArray(remoteList)) {
+        const localMap = new Map(localList.map((item) => [item.id || (item as any).appointmentId, item]));
+
+        const mergedList: AppointmentHistory[] = remoteList.map((remote) => {
+          const localMatch = localMap.get(remote.id);
+          return {
+            id: remote.id,
+            doctorId: remote.doctorId || localMatch?.doctorId || '',
+            doctorName: localMatch?.doctorName || 'Bác sĩ chuyên khoa',
+            specialty: localMatch?.specialty || 'Phòng khám đa khoa',
+            startTime: remote.startTime || localMatch?.startTime || '',
+            endTime: remote.endTime || localMatch?.endTime || '',
+            patientName: localMatch?.patientName || userInfo.name || 'Bệnh nhân',
+            patientPhone: localMatch?.patientPhone || '',
+            patientSymptoms: remote.reason || localMatch?.patientSymptoms || '',
+            status: remote.status || localMatch?.status || 'CONFIRMED',
+            cancelReason: remote.cancelReason || (localMatch as any)?.cancelReason,
+            createdAt: remote.createdAt || localMatch?.createdAt || new Date().toISOString(),
+          };
+        });
+
+        setAppointments(mergedList);
+        localStorage.setItem(appointmentsKey, JSON.stringify(mergedList));
+        return;
+      }
+    } catch (e) {
+      console.warn('Backend appointments fetch unavailable, using local storage cache', e);
+    }
+
+    setAppointments(localList);
+  };
 
   const getFallbackUserProfile = (): UserProfile | null => {
     if (!user) {

@@ -340,6 +340,8 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
   const handleSubmit = async () => {
     if (!selectedSpecialty || !selectedVisitDate || !selectedSlot) return;
 
+    const effectivePatientId = currentUser?.patientId ?? currentUser?.userId ?? currentUser?.id;
+
     setCreatingAppointment(true);
     setQuickBookingError('');
     setBookingSuccess(false);
@@ -353,6 +355,8 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
         specialization: selectedSpecialty,
         startTime: selectedSlot.startTime,
         endTime: selectedSlot.endTime,
+        patientId: effectivePatientId,
+        rescheduledFromAppointmentId: null,
         ...(reason ? { reason } : {}),
         bookingSource: 'WEB',
       });
@@ -649,7 +653,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
               <div className="success-message quick-booking-card__success">
                 <i className="pi pi-check-circle" aria-hidden="true" />
                 <span>
-                  Đã xác nhận lịch khám {formatSlotLabel(selectedSlot)}.
+                  Đã xác nhận lịch khám thành công vào {formatSlotLabel(selectedSlot)}.
                   {payment?.paymentTiming === 'PAY_LATER' ? ' Thanh toán tại phòng khám.' : ''}
                   {payment?.status === 'PAID' ? ' Đã thanh toán.' : ''}
                 </span>
