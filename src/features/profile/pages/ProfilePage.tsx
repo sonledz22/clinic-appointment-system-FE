@@ -84,7 +84,6 @@ const isSameCalendarDate = (firstDate: Date, secondDate: Date) =>
   firstDate.getFullYear() === secondDate.getFullYear()
   && firstDate.getMonth() === secondDate.getMonth()
   && firstDate.getDate() === secondDate.getDate();
->>>>>>> origin/main
 
 const renderStatusTag = (status?: string) => {
   switch (status?.toUpperCase()) {
@@ -149,7 +148,6 @@ const ProfilePage: React.FC = () => {
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
-<<<<<<< HEAD
   const appointmentsKey = `patient_appointments_${userInfo.id}`;
 
   const loadAppointments = async () => {
@@ -172,6 +170,7 @@ const ProfilePage: React.FC = () => {
           const localMatch = localMap.get(remote.id);
           return {
             id: remote.id,
+            doctorId: remote.doctorId || localMatch?.doctorId || '',
             doctorName: localMatch?.doctorName || 'Bác sĩ chuyên khoa',
             specialty: localMatch?.specialty || 'Phòng khám đa khoa',
             startTime: remote.startTime || localMatch?.startTime || '',
@@ -196,24 +195,9 @@ const ProfilePage: React.FC = () => {
     setAppointments(localList);
   };
 
-  // Load profile and history from localStorage
-  useEffect(() => {
-    const savedProfile = localStorage.getItem(profileKey);
-    if (savedProfile) {
-      try {
-        const parsed = JSON.parse(savedProfile);
-        setProfile({
-          ...parsed,
-          dateOfBirth: parsed.dateOfBirth ? new Date(parsed.dateOfBirth) : null,
-        });
-      } catch (e) {
-        console.error('Error parsing profile', e);
-      }
-=======
   const getFallbackUserProfile = (): UserProfile | null => {
     if (!user) {
       return null;
->>>>>>> origin/main
     }
 
     const id = user.userId ?? user.id;
@@ -834,55 +818,6 @@ const ProfilePage: React.FC = () => {
           </div>
         ) : null}
 
-<<<<<<< HEAD
-        {/* Tab 2: Appointment History */}
-        {activeTab === 'history' && (
-          <div className="flex flex-col gap-4">
-            {appointments.length === 0 ? (
-              <Card className="text-center p-8 border border-gray-100 shadow-sm">
-                <i className="pi pi-calendar-times text-5xl text-gray-300 mb-3" />
-                <h3 className="text-lg font-bold text-gray-800 m-0">Không tìm thấy lịch hẹn</h3>
-                <p className="text-sm text-gray-500 mt-2 mb-0">Bạn chưa đặt lịch khám nào trên hệ thống.</p>
-              </Card>
-            ) : (
-              appointments.map((appt) => (
-                <Card 
-                  key={appt.id} 
-                  className="border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200"
-                >
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    
-                    {/* Appointment details */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        {renderStatusTag(appt.status)}
-                        <span className="text-xs text-gray-400">Đặt lúc: {new Date(appt.createdAt).toLocaleString('vi-VN')}</span>
-                      </div>
-                      <h4 className="text-lg font-bold text-gray-900 m-0">Bác sĩ: {appt.doctorName}</h4>
-                      <div className="text-sm text-blue-600 font-semibold mt-1">{appt.specialty}</div>
-                      
-                      <div className="mt-2 flex flex-col gap-1 text-sm text-gray-600">
-                        <div>
-                          <i className="pi pi-clock mr-2 text-gray-400" />
-                          <strong>Giờ khám: </strong>{formatSlotTime(appt.startTime, appt.endTime)}
-                        </div>
-                        <div>
-                          <i className="pi pi-user mr-2 text-gray-400" />
-                          <strong>Bệnh nhân: </strong>{appt.patientName} ({appt.patientPhone})
-                        </div>
-                        {appt.patientSymptoms && (
-                          <div className="italic text-gray-500 mt-1">
-                            "Triệu chứng: {appt.patientSymptoms}"
-                          </div>
-                        )}
-                        {(appt as any).cancelReason && (
-                          <div className="mt-1 text-xs font-semibold text-red-600 bg-red-50 p-2 rounded border border-red-200">
-                            Lý do bác sĩ hủy: {(appt as any).cancelReason}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-=======
         {!loading && activeTab === 'history' && (
           <section className="profile-history-panel">
             <div className="profile-history-panel__header">
@@ -897,7 +832,6 @@ const ProfilePage: React.FC = () => {
                 </p>
               </div>
             </div>
->>>>>>> origin/main
 
             {appointments.length > 0 && (
               <div className="profile-history-filters">

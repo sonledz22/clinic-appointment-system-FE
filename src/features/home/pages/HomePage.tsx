@@ -360,9 +360,6 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
         ...(reason ? { reason } : {}),
         bookingSource: 'WEB',
       });
-        ...(reason ? { reason } : {}),
-        bookingSource: 'WEB',
-      });
       setCreatedAppointment(appointment);
       setShowPaymentDialog(true);
     } catch (reason) {
