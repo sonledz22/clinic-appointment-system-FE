@@ -7,6 +7,12 @@ export interface Slot {
   status?: string;
 }
 
+export interface AvailableSlot {
+  startTime: string;
+  endTime: string;
+  availableCount: number;
+}
+
 export interface SlotFilters {
   fromDate?: string;
   toDate?: string;
@@ -14,7 +20,14 @@ export interface SlotFilters {
 }
 
 export interface WeeklyPatternItem {
-  dayOfWeek: 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';
+  dayOfWeek:
+    | 'MONDAY'
+    | 'TUESDAY'
+    | 'WEDNESDAY'
+    | 'THURSDAY'
+    | 'FRIDAY'
+    | 'SATURDAY'
+    | 'SUNDAY';
   workStartTime: string;
   workEndTime: string;
   breakStartTime: string | null;

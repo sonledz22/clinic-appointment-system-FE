@@ -40,16 +40,24 @@ const renderVietnameseStatusTag = (status: string) => {
   switch (status) {
     case 'AVAILABLE':
       return <Tag value="Trống" severity="success" className="rounded font-semibold text-[11px] px-2 py-0.5" />;
+    case 'EXPIRED':
+    case 'PAST':
+      return <Tag value="Đã quá hạn" severity="secondary" className="rounded font-semibold text-[11px] px-2 py-0.5 bg-slate-200 text-slate-600 border-none" />;
+    case 'EXPIRED_PENDING':
+      return <Tag value="Quá hạn xác nhận" severity="danger" className="rounded font-semibold text-[11px] px-2 py-0.5 bg-rose-100 text-rose-700 border-none" />;
     case 'CONFIRMED':
       return <Tag value="Đã xác nhận" severity="info" className="rounded font-semibold text-[11px] px-2 py-0.5" />;
     case 'PENDING_DOCTOR_CONFIRMATION':
     case 'BOOKED':
     case 'PENDING':
+    case 'PENDING_PAYMENT':
       return <Tag value="Chờ xác nhận" severity="warning" className="rounded font-semibold text-[11px] px-2 py-0.5" />;
     case 'CANCELLED_BY_DOCTOR':
       return <Tag value="Bác sĩ đã hủy" severity="danger" className="rounded font-semibold text-[11px] px-2 py-0.5" />;
     case 'CANCELLED':
       return <Tag value="Đã hủy" severity="danger" className="rounded font-semibold text-[11px] px-2 py-0.5" />;
+    case 'NOT_CHECKIN':
+      return <Tag value="Vắng mặt" severity="warning" className="rounded font-semibold text-[11px] px-2 py-0.5 bg-amber-100 text-amber-800 border-none" />;
     case 'CHECKIN_SUCCESS':
       return <Tag value="Đang khám" severity="info" className="rounded font-semibold text-[11px] px-2 py-0.5 bg-cyan-500 border-none text-white" />;
     case 'CHECKOUT_SUCCESS':
@@ -124,10 +132,10 @@ const formatDateTime = (value: string) =>
 const formatDate = (value?: string | null) =>
   value
     ? new Date(value).toLocaleDateString('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      })
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
     : 'Chưa cập nhật';
 
 const formatTimeRange = (startTime: string, endTime: string) => {
@@ -490,6 +498,15 @@ const DoctorDashboard: React.FC = () => {
     void loadProfile();
     void loadScheduleData();
   }, []);
+
+  // Auto-refresh schedule & appointment data every 60 seconds
+  useEffect(() => {
+    const autoRefreshInterval = setInterval(() => {
+      void loadScheduleData(slotFilters);
+    }, 60000);
+
+    return () => clearInterval(autoRefreshInterval);
+  }, [slotFilters]);
 
   const handleProfileSave = async () => {
     resetFeedback();
@@ -982,10 +999,16 @@ const DoctorDashboard: React.FC = () => {
 
             <Card className="border border-gray-100 shadow-sm p-4 rounded-xl">
               <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-6">
-                <div className="flex items-center gap-2">
-                  <Button label="Tuần trước" icon="pi pi-angle-left" outlined onClick={() => moveWeek(-1)} />
-                  <Button label="Tuần này" outlined onClick={() => moveWeek(0)} />
-                  <Button label="Tuần sau" iconPos="right" icon="pi pi-angle-right" outlined onClick={() => moveWeek(1)} />
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Button label="Tuần trước" icon="pi pi-angle-left" outlined onClick={() => moveWeek(-1)} />
+                    <Button label="Tuần này" outlined onClick={() => moveWeek(0)} />
+                    <Button label="Tuần sau" iconPos="right" icon="pi pi-angle-right" outlined onClick={() => moveWeek(1)} />
+                  </div>
+                  <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5 shadow-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Tự động đồng bộ mỗi 60s
+                  </span>
                 </div>
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="flex flex-col gap-1">
@@ -1053,7 +1076,18 @@ const DoctorDashboard: React.FC = () => {
                           ) : (
                             daySlots.map((slot) => {
                               const appointment = appointmentsBySlotId[slot.id];
-                              const rawStatus = appointment?.appointmentStatus || slot.status || (slot.booked ? 'BOOKED' : 'AVAILABLE');
+                              const isPastSlot = new Date(slot.endTime) < new Date();
+                              const isPastPending = Boolean(
+                                appointment &&
+                                ['PENDING_DOCTOR_CONFIRMATION', 'PENDING_PAYMENT', 'PENDING', 'BOOKED'].includes(appointment.appointmentStatus) &&
+                                isPastSlot
+                              );
+                              const isPast = !appointment ? isPastSlot : isPastPending;
+                              const rawStatus = isPastPending
+                                ? 'EXPIRED_PENDING'
+                                : !appointment && isPastSlot
+                                  ? 'EXPIRED'
+                                  : appointment?.appointmentStatus || slot.status || (slot.booked ? 'BOOKED' : 'AVAILABLE');
                               const isSelected = selectedSlotId === slot.id;
 
                               return (
@@ -1065,9 +1099,11 @@ const DoctorDashboard: React.FC = () => {
                                     'w-full text-left p-2.5 rounded-xl border transition-all duration-200 shadow-sm flex flex-col gap-1.5 ' +
                                     (isSelected
                                       ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-400'
-                                      : appointment
-                                      ? 'border-indigo-200 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-300'
-                                      : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300')
+                                      : isPast
+                                        ? 'border-rose-200 bg-rose-50/40 opacity-70 hover:opacity-100'
+                                        : appointment
+                                          ? 'border-indigo-200 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-300'
+                                          : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300')
                                   }
                                 >
                                   <div className="flex items-center justify-between gap-1 w-full">
@@ -1079,11 +1115,16 @@ const DoctorDashboard: React.FC = () => {
                                   </div>
 
                                   {appointment ? (
-                                    <div className="text-[11px] font-semibold text-slate-700 bg-white p-1.5 rounded border border-slate-100 flex items-center justify-between">
+                                    <div className={'text-[11px] font-semibold p-1.5 rounded border flex items-center justify-between ' + (isPastPending ? 'bg-rose-50/80 border-rose-200 text-rose-800' : 'bg-white border-slate-100 text-slate-700')}>
                                       <span className="truncate">
                                         👤 {appointment.patientName || 'Bệnh nhân'}
                                       </span>
                                       <i className="pi pi-chevron-right text-[10px] text-blue-500 shrink-0" />
+                                    </div>
+                                  ) : isPast ? (
+                                    <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                      Hết hạn đặt lịch
                                     </div>
                                   ) : (
                                     <div className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
@@ -1176,7 +1217,7 @@ const DoctorDashboard: React.FC = () => {
                         <h3 className="text-lg font-extrabold text-slate-900 m-0">
                           {consultationContext.patient.lastName} {consultationContext.patient.firstName}
                         </h3>
-                        <p className="text-xs text-slate-500 m-0">Thông tin bệnh nhân từ patient-service</p>
+                        <p className="text-xs text-slate-500 m-0">Thông tin bệnh nhân từ hồ sơ bệnh án</p>
                       </div>
                     </div>
 
