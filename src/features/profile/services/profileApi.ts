@@ -102,6 +102,19 @@ export interface MedicalRecordResponse {
   prescriptions: MedicalRecordPrescription[];
 }
 
+export interface NotificationItem {
+  id: string;
+  recipientUserId: string;
+  type: string;
+  title: string;
+  body: string;
+  status: string;
+  priority: number | null;
+  createdAt: string;
+  updatedAt: string;
+  readAt: string | null;
+}
+
 export const profileApi = {
   async getUserProfile() {
     const response = await axiosClient.get<UserProfile>('/api/users/me');
@@ -157,6 +170,16 @@ export const profileApi = {
 
   async getDoctor(doctorId: string) {
     const response = await axiosClient.get<DoctorSummary>(`/api/doctors/${doctorId}`);
+    return response.data;
+  },
+
+  async getNotifications(recipientId: string) {
+    const response = await axiosClient.get<NotificationItem[]>(`/api/notifications/recipient/${recipientId}`);
+    return response.data;
+  },
+
+  async markNotificationRead(notificationId: string) {
+    const response = await axiosClient.put<NotificationItem>(`/api/notifications/${notificationId}/read`);
     return response.data;
   },
 

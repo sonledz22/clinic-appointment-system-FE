@@ -164,8 +164,9 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
       setBookingError('Vui lòng nhập đầy đủ Họ tên và Số điện thoại.');
       return;
     }
-    if (!user?.patientId) {
-      setBookingError('Không tìm thấy hồ sơ bệnh nhân. Vui lòng đăng nhập lại bằng tài khoản bệnh nhân.');
+    const effectivePatientId = user?.patientId ?? user?.userId ?? user?.id;
+    if (!effectivePatientId) {
+      setBookingError('Vui lòng đăng nhập lại bằng tài khoản bệnh nhân.');
       return;
     }
 
@@ -174,7 +175,10 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
 
     try {
       const createdAppointment = await createAppointment({
-        patientId: user.patientId,
+        specialization: selectedDoctor.specialty || 'General',
+        startTime: selectedSlot.startTime,
+        endTime: selectedSlot.endTime,
+        patientId: effectivePatientId,
         doctorId: selectedDoctor.id,
         slotId: selectedSlot.id,
         rescheduledFromAppointmentId: null,
@@ -193,11 +197,13 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
         patientName,
         patientPhone,
         patientSymptoms,
-        status: createdAppointment.status || 'PENDING_DOCTOR_CONFIRMATION',
+        status: createdAppointment.status || 'CONFIRMED',
         createdAt: createdAppointment.createdAt || new Date().toISOString(),
       };
-      const existingAppts = JSON.parse(localStorage.getItem('patient_appointments') || '[]');
-      localStorage.setItem('patient_appointments', JSON.stringify([newAppointment, ...existingAppts]));
+      const currentUserId = user?.userId ?? user?.id ?? 'anonymous';
+      const appointmentsKey = `patient_appointments_${currentUserId}`;
+      const existingAppts = JSON.parse(localStorage.getItem(appointmentsKey) || '[]');
+      localStorage.setItem(appointmentsKey, JSON.stringify([newAppointment, ...existingAppts]));
 
       setBookingSuccess(true);
       
@@ -397,7 +403,7 @@ const DoctorsPage = ({}: Readonly<DoctorsPageProps>) => {
                     <i className="pi pi-check-circle text-lg" />
                     <div>
                       <div>Đặt lịch khám thành công!</div>
-                      <div className="text-xs font-normal text-gray-600 mt-1">Lịch khám của bạn đang chờ bác sĩ xác nhận.</div>
+                      <div className="text-xs font-normal text-gray-600 mt-1">Lịch khám của bạn đã được xác nhận thành công.</div>
                     </div>
                   </div>
                 )}

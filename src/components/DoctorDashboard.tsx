@@ -209,7 +209,7 @@ const getCancelAvailabilityMessage = (context: DoctorAppointmentContext, now: Da
   }
 
   if (context.appointmentStatus !== 'CONFIRMED' && !isPendingDoctorConfirmationStatus(context.appointmentStatus)) {
-    return 'Chỉ có thể hủy lịch khi lịch hẹn ở trạng thái chờ bác sĩ xác nhận hoặc đã xác nhận.';
+    return 'Chỉ có thể hủy lịch khi lịch hẹn ở trạng thái đã xác nhận.';
   }
 
   const start = new Date(context.startTime);
@@ -287,13 +287,18 @@ const updateLocalStorageAppointmentStatus = (
   cancelReason?: string
 ) => {
   try {
-    const existingAppts = JSON.parse(localStorage.getItem('patient_appointments') || '[]');
-    const updated = existingAppts.map((item: any) =>
-      item.appointmentId === appointmentId || item.id === appointmentId || item.slotId === slotId
-        ? { ...item, status: newStatus, ...(cancelReason ? { cancelReason } : {}) }
-        : item
-    );
-    localStorage.setItem('patient_appointments', JSON.stringify(updated));
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('patient_appointments')) {
+        const existingAppts = JSON.parse(localStorage.getItem(key) || '[]');
+        const updated = existingAppts.map((item: any) =>
+          item.appointmentId === appointmentId || item.id === appointmentId || item.slotId === slotId
+            ? { ...item, status: newStatus, ...(cancelReason ? { cancelReason } : {}) }
+            : item
+        );
+        localStorage.setItem(key, JSON.stringify(updated));
+      }
+    }
     window.dispatchEvent(new Event('storage'));
   } catch (e) {
     // ignore
