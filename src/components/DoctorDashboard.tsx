@@ -491,6 +491,15 @@ const DoctorDashboard: React.FC = () => {
     void loadScheduleData();
   }, []);
 
+  // Auto-refresh schedule & appointment data every 60 seconds
+  useEffect(() => {
+    const autoRefreshInterval = setInterval(() => {
+      void loadScheduleData(slotFilters);
+    }, 60000);
+
+    return () => clearInterval(autoRefreshInterval);
+  }, [slotFilters]);
+
   const handleProfileSave = async () => {
     resetFeedback();
     setLoading(true);
@@ -982,10 +991,16 @@ const DoctorDashboard: React.FC = () => {
 
             <Card className="border border-gray-100 shadow-sm p-4 rounded-xl">
               <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-6">
-                <div className="flex items-center gap-2">
-                  <Button label="Tuần trước" icon="pi pi-angle-left" outlined onClick={() => moveWeek(-1)} />
-                  <Button label="Tuần này" outlined onClick={() => moveWeek(0)} />
-                  <Button label="Tuần sau" iconPos="right" icon="pi pi-angle-right" outlined onClick={() => moveWeek(1)} />
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Button label="Tuần trước" icon="pi pi-angle-left" outlined onClick={() => moveWeek(-1)} />
+                    <Button label="Tuần này" outlined onClick={() => moveWeek(0)} />
+                    <Button label="Tuần sau" iconPos="right" icon="pi pi-angle-right" outlined onClick={() => moveWeek(1)} />
+                  </div>
+                  <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5 shadow-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Tự động đồng bộ mỗi 60s
+                  </span>
                 </div>
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="flex flex-col gap-1">
