@@ -2039,7 +2039,8 @@
 .profile-account-panel,
 .profile-form-panel,
 .profile-history-panel,
-.profile-appointment-card {
+.profile-appointment-card,
+.profile-medical-record-card {
   border: 1px solid #D7E2EF;
   border-radius: 8px;
   background: #FFFFFF;
@@ -2075,6 +2076,7 @@
 .profile-form-panel__header h2,
 .profile-history-panel__header h2,
 .profile-appointment-card h3,
+.profile-medical-record-card h3,
 .profile-detail__header h2 {
   margin: 0;
   color: #0F172A;
@@ -2413,6 +2415,141 @@
   border-color: #B91C1C;
   background: #B91C1C;
   color: #FFFFFF;
+}
+
+.profile-medical-record-list {
+  display: grid;
+  gap: 14px;
+}
+
+.profile-medical-record-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border-left: 4px solid #0D9488;
+}
+
+.profile-medical-record-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.profile-medical-record-card__header > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.profile-medical-record-card__header > div > span {
+  color: #64748B;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profile-medical-record-card h3 {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.profile-medical-record-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 22px;
+  margin: 0;
+}
+
+.profile-medical-record-grid__wide {
+  grid-column: 1 / -1;
+}
+
+.profile-medical-record-grid dt,
+.profile-prescription-row dt {
+  margin: 0 0 5px;
+  color: #64748B;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profile-medical-record-grid dd,
+.profile-prescription-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #0F172A;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.profile-prescription-section {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-prescription-section__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0F172A;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.profile-prescription-section__title i {
+  color: #0D9488;
+  font-size: 14px;
+}
+
+.profile-prescription-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  list-style: none;
+}
+
+.profile-prescription-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.8fr) minmax(0, 1.8fr);
+  gap: 14px;
+  padding: 13px 14px;
+  border-top: 1px solid #E2E8F0;
+}
+
+.profile-prescription-row:first-child {
+  border-top: 0;
+}
+
+.profile-prescription-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #0F172A;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.profile-prescription-row dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.profile-prescription-empty {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px dashed #CBD5E1;
+  border-radius: 8px;
+  color: #64748B;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .profile-appointment-dialog.p-dialog {
@@ -2780,6 +2917,10 @@
     width: 100%;
   }
 
+  .profile-prescription-row {
+    grid-template-columns: 1fr;
+  }
+
   .profile-history-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2827,9 +2968,16 @@
 
   .profile-form-grid,
   .profile-detail__grid,
+  .profile-medical-record-grid,
+  .profile-prescription-row dl,
   .profile-history-filters,
   .profile-payment-info {
     grid-template-columns: 1fr;
+  }
+
+  .profile-medical-record-card__header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .profile-form-actions {

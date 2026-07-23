@@ -83,6 +83,25 @@ export interface RescheduleOption {
   availableCount: number;
 }
 
+export interface MedicalRecordPrescription {
+  id: string;
+  medicalRecordId: string;
+  medicationName: string;
+  dosage: string | null;
+  frequency: string | null;
+  duration: string | null;
+}
+
+export interface MedicalRecordResponse {
+  id: string;
+  patientId: string;
+  recordDate: string;
+  diagnosis: string;
+  treatment: string | null;
+  notes: string | null;
+  prescriptions: MedicalRecordPrescription[];
+}
+
 export const profileApi = {
   async getUserProfile() {
     const response = await axiosClient.get<UserProfile>('/api/users/me');
@@ -106,6 +125,11 @@ export const profileApi = {
 
   async getAppointments() {
     const response = await axiosClient.get<AppointmentHistory[]>('/api/appointments/me');
+    return response.data;
+  },
+
+  async getMedicalRecords() {
+    const response = await axiosClient.get<MedicalRecordResponse[]>('/api/patients/me/medical-records');
     return response.data;
   },
 

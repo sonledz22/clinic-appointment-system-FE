@@ -9,7 +9,15 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import AppLayout from '@/components/layout/AppLayout';
 import PageHeader from '@/components/ui/PageHeader';
 import { useAuthStore } from '@/stores/auth.store';
-import { profileApi, type AppointmentHistory, type DoctorSummary, type PatientProfile, type RescheduleOption, type UserProfile } from '@/features/profile/services/profileApi';
+import {
+  profileApi,
+  type AppointmentHistory,
+  type DoctorSummary,
+  type MedicalRecordResponse,
+  type PatientProfile,
+  type RescheduleOption,
+  type UserProfile,
+} from '@/features/profile/services/profileApi';
 import { paymentApi, type PaymentResponse } from '@/features/payments/services/paymentApi';
 import { buildVietQrTransferContent, buildVietQrUrl } from '@/features/payments/utils/vietQr';
 
@@ -59,6 +67,19 @@ const appointmentStatusFilterOptions = [
 
 const formatDateTime = (value: string) => new Date(value).toLocaleString('vi-VN');
 
+const formatDate = (value: string) => {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return 'Chưa xác định';
+  }
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+};
+
 const formatCurrency = (amount: number, currency = 'VND') =>
   new Intl.NumberFormat('vi-VN', {
     style: 'currency',
@@ -80,17 +101,21 @@ const isSameCalendarDate = (firstDate: Date, secondDate: Date) =>
   && firstDate.getMonth() === secondDate.getMonth()
   && firstDate.getDate() === secondDate.getDate();
 
+type ProfileTab = 'profile' | 'history' | 'medicalRecords';
+
 const ProfilePage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
-  const [activeTab, setActiveTab] = useState<'profile' | 'history'>('profile');
+  const [activeTab, setActiveTab] = useState<ProfileTab>('profile');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [patientProfile, setPatientProfile] = useState<PatientProfile>(emptyPatientProfile);
   const [appointments, setAppointments] = useState<AppointmentHistory[]>([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecordResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
   const [savingPatient, setSavingPatient] = useState(false);
   const [error, setError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
+  const [medicalRecordError, setMedicalRecordError] = useState('');
   const [doctorsById, setDoctorsById] = useState<Record<string, DoctorSummary>>({});
   const [appointmentSearchTerm, setAppointmentSearchTerm] = useState('');
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('');
@@ -142,12 +167,14 @@ const ProfilePage: React.FC = () => {
     const loadProfile = async () => {
       setLoading(true);
       setError('');
+      setMedicalRecordError('');
 
       try {
-        const [accountResult, patientResult, historyResult] = await Promise.allSettled([
+        const [accountResult, patientResult, historyResult, medicalRecordsResult] = await Promise.allSettled([
           profileApi.getUserProfile(),
           profileApi.getPatientProfile(),
           profileApi.getAppointments(),
+          profileApi.getMedicalRecords(),
         ]);
 
         if (cancelled) {
@@ -164,6 +191,13 @@ const ProfilePage: React.FC = () => {
 
         if (historyResult.status === 'fulfilled') {
           setAppointments(historyResult.value);
+        }
+
+        if (medicalRecordsResult.status === 'fulfilled') {
+          setMedicalRecords(medicalRecordsResult.value);
+        } else {
+          setMedicalRecords([]);
+          setMedicalRecordError('Không thể tải bệnh án và đơn thuốc.');
         }
       } catch {
         if (!cancelled) {
@@ -227,6 +261,18 @@ const ProfilePage: React.FC = () => {
   const sortedAppointments = useMemo(
     () => [...appointments].sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()),
     [appointments],
+  );
+
+  const sortedMedicalRecords = useMemo(
+    () => [...medicalRecords].sort(
+      (first, second) => new Date(`${second.recordDate}T00:00:00`).getTime() - new Date(`${first.recordDate}T00:00:00`).getTime(),
+    ),
+    [medicalRecords],
+  );
+
+  const totalPrescriptions = useMemo(
+    () => medicalRecords.reduce((total, record) => total + (record.prescriptions?.length ?? 0), 0),
+    [medicalRecords],
   );
 
   const selectedRescheduleSlot = useMemo(
@@ -607,6 +653,17 @@ const ProfilePage: React.FC = () => {
             <span>Lịch sử đặt khám</span>
             {appointments.length > 0 && <strong>{appointments.length}</strong>}
           </button>
+          <button
+            type="button"
+            className={`profile-tab${activeTab === 'medicalRecords' ? ' is-active' : ''}`}
+            onClick={() => setActiveTab('medicalRecords')}
+            role="tab"
+            aria-selected={activeTab === 'medicalRecords'}
+          >
+            <i className="pi pi-file-edit" />
+            <span>Bệnh án và đơn thuốc</span>
+            {medicalRecords.length > 0 && <strong>{medicalRecords.length}</strong>}
+          </button>
         </div>
 
         {loading ? (
@@ -882,6 +939,108 @@ const ProfilePage: React.FC = () => {
                 })}
               </div>
             )}
+          </section>
+        )}
+
+        {!loading && activeTab === 'medicalRecords' && (
+          <section className="profile-history-panel profile-medical-record-panel">
+            <div className="profile-history-panel__header">
+              <div>
+                <h2>Bệnh án và đơn thuốc</h2>
+                <p>
+                  {medicalRecordError
+                    ? 'Không tải được dữ liệu bệnh án'
+                    : medicalRecords.length
+                    ? `${medicalRecords.length} bệnh án, ${totalPrescriptions} thuốc đã kê`
+                    : 'Chưa có bệnh án nào'}
+                </p>
+              </div>
+            </div>
+
+            {medicalRecordError && (
+              <div className="profile-alert profile-alert--error">
+                <i className="pi pi-exclamation-circle" />
+                <span>{medicalRecordError}</span>
+              </div>
+            )}
+
+            {!medicalRecordError && medicalRecords.length === 0 ? (
+              <div className="profile-empty-state">
+                <i className="pi pi-file" />
+                <h3>Chưa có bệnh án</h3>
+                <p>Bệnh án và đơn thuốc sẽ hiển thị sau khi bác sĩ hoàn tất buổi khám.</p>
+              </div>
+            ) : medicalRecords.length > 0 ? (
+              <div className="profile-medical-record-list">
+                {sortedMedicalRecords.map((record) => {
+                  const prescriptions = record.prescriptions ?? [];
+
+                  return (
+                    <article key={record.id} className="profile-medical-record-card">
+                      <header className="profile-medical-record-card__header">
+                        <div>
+                          <span>Ngày ghi nhận</span>
+                          <h3>{formatDate(record.recordDate)}</h3>
+                        </div>
+                        <span className={`profile-status-pill ${prescriptions.length ? 'is-info' : 'is-muted'}`}>
+                          {prescriptions.length ? `${prescriptions.length} thuốc` : 'Không có thuốc'}
+                        </span>
+                      </header>
+
+                      <dl className="profile-medical-record-grid">
+                        <div>
+                          <dt>Chẩn đoán</dt>
+                          <dd>{record.diagnosis}</dd>
+                        </div>
+                        <div>
+                          <dt>Hướng điều trị</dt>
+                          <dd>{record.treatment || 'Chưa ghi hướng điều trị'}</dd>
+                        </div>
+                        {record.notes && (
+                          <div className="profile-medical-record-grid__wide">
+                            <dt>Ghi chú</dt>
+                            <dd>{record.notes}</dd>
+                          </div>
+                        )}
+                      </dl>
+
+                      <section className="profile-prescription-section">
+                        <div className="profile-prescription-section__title">
+                          <i className="pi pi-list-check" />
+                          <span>Đơn thuốc</span>
+                        </div>
+
+                        {prescriptions.length ? (
+                          <ul className="profile-prescription-list">
+                            {prescriptions.map((prescription, index) => (
+                              <li key={prescription.id || `${record.id}-${index}`} className="profile-prescription-row">
+                                <strong>{prescription.medicationName}</strong>
+                                <dl>
+                                  <div>
+                                    <dt>Liều dùng</dt>
+                                    <dd>{prescription.dosage || 'Chưa ghi'}</dd>
+                                  </div>
+                                  <div>
+                                    <dt>Tần suất</dt>
+                                    <dd>{prescription.frequency || 'Chưa ghi'}</dd>
+                                  </div>
+                                  <div>
+                                    <dt>Thời gian</dt>
+                                    <dd>{prescription.duration || 'Chưa ghi'}</dd>
+                                  </div>
+                                </dl>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="profile-prescription-empty">Bác sĩ chưa kê đơn thuốc cho bệnh án này.</p>
+                        )}
+                      </section>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
           </section>
         )}
       </section>
