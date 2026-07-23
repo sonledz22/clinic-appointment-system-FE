@@ -2163,6 +2163,122 @@
   color: #475569;
 }
 
+.profile-notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.profile-notification {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  background: #FFFFFF;
+}
+
+.profile-notification.is-unread {
+  border-color: #BAE6FD;
+  background: #F5FBFF;
+  box-shadow: inset 3px 0 0 0 #0EA5E9;
+}
+
+.profile-notification__icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #E0F2FE;
+  color: #0369A1;
+}
+
+.profile-notification.is-unread .profile-notification__icon {
+  background: #0EA5E9;
+  color: #FFFFFF;
+}
+
+.profile-notification__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.profile-notification__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-notification__head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0F172A;
+  overflow-wrap: anywhere;
+}
+
+.profile-notification.is-unread .profile-notification__head h3 {
+  font-weight: 700;
+}
+
+.profile-notification__head time {
+  flex: none;
+  font-size: 12px;
+  color: #94A3B8;
+  white-space: nowrap;
+}
+
+.profile-notification__body p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.profile-notification__action {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.profile-notification__mark {
+  border: 1px solid #0EA5E9;
+  background: transparent;
+  color: #0369A1;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.profile-notification__mark:hover:not(:disabled) {
+  background: #0EA5E9;
+  color: #FFFFFF;
+}
+
+.profile-notification__mark:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.profile-notification__read {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #94A3B8;
+  white-space: nowrap;
+}
+
 .profile-form-panel {
   padding: 22px 24px 20px;
 }
