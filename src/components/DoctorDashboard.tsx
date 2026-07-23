@@ -1217,7 +1217,7 @@ const DoctorDashboard: React.FC = () => {
                         <h3 className="text-lg font-extrabold text-slate-900 m-0">
                           {consultationContext.patient.lastName} {consultationContext.patient.firstName}
                         </h3>
-                        <p className="text-xs text-slate-500 m-0">Thông tin bệnh nhân từ patient-service</p>
+                        <p className="text-xs text-slate-500 m-0">Thông tin bệnh nhân từ hồ sơ bệnh án</p>
                       </div>
                     </div>
 
