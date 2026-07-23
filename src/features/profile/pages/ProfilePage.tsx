@@ -148,7 +148,8 @@ const ProfilePage: React.FC = () => {
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
-  const appointmentsKey = `patient_appointments_${userInfo.id}`;
+  const currentUserId = user?.userId ?? user?.id ?? 'anonymous';
+  const appointmentsKey = `patient_appointments_${currentUserId}`;
 
   const loadAppointments = async () => {
     let localList: AppointmentHistory[] = [];
@@ -175,7 +176,7 @@ const ProfilePage: React.FC = () => {
             specialty: localMatch?.specialty || 'Phòng khám đa khoa',
             startTime: remote.startTime || localMatch?.startTime || '',
             endTime: remote.endTime || localMatch?.endTime || '',
-            patientName: localMatch?.patientName || userInfo.name || 'Bệnh nhân',
+            patientName: localMatch?.patientName || user?.fullName || 'Bệnh nhân',
             patientPhone: localMatch?.patientPhone || '',
             patientSymptoms: remote.reason || localMatch?.patientSymptoms || '',
             status: remote.status || localMatch?.status || 'CONFIRMED',
