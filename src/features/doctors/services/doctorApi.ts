@@ -1,55 +1,124 @@
 import axiosClient from '@/lib/axiosClient';
-import type { AvailableSlot, Doctor, DoctorCardViewModel, Slot } from '@/features/doctors/types/doctor';
 
-const DEFAULT_DOCTOR_IMAGE = 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=500';
+import type {
+  AvailableSlot,
+  Doctor,
+  DoctorAppointmentContext,
+  DoctorCancelAppointmentPayload,
+  DoctorCardViewModel,
+  DoctorCheckoutPayload,
+  DoctorLeave,
+  DoctorScheduleAppointment,
+  GenerateRecurringSchedulePayload,
+  RequestDoctorLeavePayload,
+  Slot,
+  SlotFilters,
+} from '@/features/doctors/types/doctor';
+
+const DEFAULT_DOCTOR_IMAGE =
+  'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=500';
 
 const toDoctorCard = (doctor: Doctor): DoctorCardViewModel => ({
   id: doctor.id,
   name: doctor.name,
   specialty: doctor.specialization,
-  workplace: doctor.active ? 'Cơ sở đã kích hoạt' : 'Cơ sở đang cập nhật',
+  workplace: doctor.active
+    ? 'Cơ sở đã kích hoạt'
+    : 'Cơ sở đang cập nhật',
   type: 'Phòng khám',
   area: 'TP. Hồ Chí Minh',
   address: doctor.email,
   image: doctor.avatarUrl || DEFAULT_DOCTOR_IMAGE,
   price: 'Liên hệ',
   rating: 4.8,
-  experience: doctor.qualifications || (doctor.active ? 'Bác sĩ chuyên khoa' : 'Tạm ngưng nhận lịch'),
-  introduction: doctor.biography || `Bác sĩ chuyên khoa ${doctor.specialization}. Liên hệ qua ${doctor.phoneNumber} để được hỗ trợ thêm.`,
-  strengths: [doctor.specialization, 'Tư vấn khám bệnh', 'Theo dõi lịch hẹn'],
+  experience:
+    doctor.qualifications ||
+    (doctor.active ? 'Bác sĩ chuyên khoa' : 'Tạm ngưng nhận lịch'),
+  introduction:
+    doctor.biography ||
+    `Bác sĩ chuyên khoa ${doctor.specialization}. Liên hệ qua ${doctor.phoneNumber} để được hỗ trợ thêm.`,
+  strengths: [
+    doctor.specialization,
+    'Tư vấn khám bệnh',
+    'Theo dõi lịch hẹn',
+  ],
 });
 
 export const fetchDoctors = async (specialization?: string) => {
   const response = await axiosClient.get<Doctor[]>('/api/doctors', {
     params: specialization ? { specialization } : undefined,
   });
+
   return response.data;
 };
 
 export const fetchDoctorSpecializations = async () => {
-  const response = await axiosClient.get<string[]>('/api/doctors/specializations');
+  const response = await axiosClient.get<string[]>(
+    '/api/doctors/specializations',
+  );
+
   return response.data;
 };
 
-export const fetchDoctorsBySpecialization = async (specialization: string) => fetchDoctors(specialization);
+export const fetchDoctorsBySpecialization = async (
+  specialization: string,
+) => fetchDoctors(specialization);
 
-export const fetchAvailableSlotsBySpecialization = async (specialization: string, date: string) => {
-  const response = await axiosClient.get<AvailableSlot[]>('/api/doctors/available-slots', {
-    params: { specialization, date },
-  });
+export const fetchAvailableSlotsBySpecialization = async (
+  specialization: string,
+  date: string,
+) => {
+  const response = await axiosClient.get<AvailableSlot[]>(
+    '/api/doctors/available-slots',
+    {
+      params: {
+        specialization,
+        date,
+      },
+    },
+  );
+
   return response.data;
 };
 
-export const fetchDoctorSlots = async (doctorId: string) => {
-  const response = await axiosClient.get<Slot[]>(`/api/doctors/${doctorId}/slots`);
+export const fetchDoctorSlots = async (
+  doctorId: string,
+  filters?: SlotFilters,
+) => {
+  const response = await axiosClient.get<Slot[]>(
+    `/api/doctors/${doctorId}/slots`,
+    {
+      params: filters,
+    },
+  );
+
   return response.data;
 };
 
-export const addDoctorSlot = async (doctorId: string, startTime: string, endTime: string) => {
-  const response = await axiosClient.post<Doctor>(`/api/doctors/${doctorId}/slots`, {
-    startTime,
-    endTime,
-  });
+export const fetchMySlots = async (filters?: SlotFilters) => {
+  const response = await axiosClient.get<Slot[]>(
+    '/api/doctors/me/slots',
+    {
+      params: filters,
+    },
+  );
+
+  return response.data;
+};
+
+export const addDoctorSlot = async (
+  doctorId: string,
+  startTime: string,
+  endTime: string,
+) => {
+  const response = await axiosClient.post<Doctor>(
+    `/api/doctors/${doctorId}/slots`,
+    {
+      startTime,
+      endTime,
+    },
+  );
+
   return response.data;
 };
 
@@ -57,47 +126,229 @@ export const generateDoctorSlots = async (
   doctorId: string,
   startTime: string,
   endTime: string,
-  slotDurationMinutes: number = 30
+  slotDurationMinutes: number = 30,
 ) => {
-  const response = await axiosClient.post<Doctor>(`/api/doctors/${doctorId}/slots/generate`, {
-    startTime,
-    endTime,
-    slotDurationMinutes,
-  });
+  const response = await axiosClient.post<Doctor>(
+    `/api/doctors/${doctorId}/slots/generate`,
+    {
+      startTime,
+      endTime,
+      slotDurationMinutes,
+    },
+  );
+
   return response.data;
 };
 
-export const reserveDoctorSlot = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.post<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/reserve`);
+export const generateDoctorRecurringSlots = async (
+  doctorId: string,
+  payload: GenerateRecurringSchedulePayload,
+) => {
+  const response = await axiosClient.post<Doctor>(
+    `/api/doctors/${doctorId}/slots/generate-recurring`,
+    payload,
+  );
+
   return response.data;
 };
 
-export const releaseDoctorSlot = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.post<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/release`);
+export const generateMyRecurringSlots = async (
+  payload: GenerateRecurringSchedulePayload,
+) => {
+  const response = await axiosClient.post<Doctor>(
+    '/api/doctors/me/slots/generate-recurring',
+    payload,
+  );
+
   return response.data;
 };
 
-export const bookDoctorSlot = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.post<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/book`);
+export const reserveDoctorSlot = async (
+  doctorId: string,
+  slotId: string,
+) => {
+  const response = await axiosClient.post<Slot>(
+    `/api/doctors/${doctorId}/slots/${slotId}/reserve`,
+  );
+
   return response.data;
 };
 
-export const cancelDoctorSlotBooking = async (doctorId: string, slotId: string) => {
-  const response = await axiosClient.delete<Slot>(`/api/doctors/${doctorId}/slots/${slotId}/book`);
+export const releaseDoctorSlot = async (
+  doctorId: string,
+  slotId: string,
+) => {
+  const response = await axiosClient.post<Slot>(
+    `/api/doctors/${doctorId}/slots/${slotId}/release`,
+  );
+
   return response.data;
 };
 
-export const deleteDoctorSlot = async (doctorId: string, slotId: string) => {
-  await axiosClient.delete(`/api/doctors/${doctorId}/slots/${slotId}`);
+export const bookDoctorSlot = async (
+  doctorId: string,
+  slotId: string,
+) => {
+  const response = await axiosClient.post<Slot>(
+    `/api/doctors/${doctorId}/slots/${slotId}/book`,
+  );
+
+  return response.data;
+};
+
+export const cancelDoctorSlotBooking = async (
+  doctorId: string,
+  slotId: string,
+) => {
+  const response = await axiosClient.delete<Slot>(
+    `/api/doctors/${doctorId}/slots/${slotId}/book`,
+  );
+
+  return response.data;
+};
+
+export const deleteDoctorSlot = async (
+  doctorId: string,
+  slotId: string,
+) => {
+  await axiosClient.delete(
+    `/api/doctors/${doctorId}/slots/${slotId}`,
+  );
 };
 
 export const fetchMyProfile = async () => {
-  const response = await axiosClient.get<Doctor>('/api/doctors/me');
+  const response = await axiosClient.get<Doctor>(
+    '/api/doctors/me',
+  );
+
   return response.data;
 };
 
-export const updateMyProfile = async (data: Partial<Doctor>) => {
-  const response = await axiosClient.put<Doctor>('/api/doctors/me', data);
+export const updateMyProfile = async (
+  data: Partial<Doctor>,
+) => {
+  const response = await axiosClient.put<Doctor>(
+    '/api/doctors/me',
+    data,
+  );
+
+  return response.data;
+};
+
+export const fetchMyLeaves = async () => {
+  const response = await axiosClient.get<DoctorLeave[]>(
+    '/api/doctors/me/leaves',
+  );
+
+  return response.data;
+};
+
+export const requestDoctorLeave = async (
+  payload: RequestDoctorLeavePayload,
+) => {
+  const response = await axiosClient.post<DoctorLeave>(
+    '/api/doctors/me/leaves',
+    payload,
+  );
+
+  return response.data;
+};
+
+export const cancelDoctorLeave = async (
+  leaveId: string,
+) => {
+  await axiosClient.delete(
+    `/api/doctors/me/leaves/${leaveId}`,
+  );
+};
+
+export const fetchDoctorAppointmentContext = async (
+  appointmentId: string,
+) => {
+  const response = await axiosClient.get<DoctorAppointmentContext>(
+    `/api/doctor/appointments/${appointmentId}/consultation-context`,
+  );
+
+  return response.data;
+};
+
+export const fetchDoctorSlotConsultationContext = async (
+  slotId: string,
+) => {
+  const response = await axiosClient.get<DoctorAppointmentContext>(
+    `/api/doctor/appointments/slot/${slotId}/consultation-context`,
+  );
+
+  return response.data;
+};
+
+export const fetchDoctorAppointments = async (
+  fromDate: string,
+  toDate: string,
+) => {
+  const response = await axiosClient.get<
+    DoctorScheduleAppointment[]
+  >('/api/doctor/appointments', {
+    params: {
+      fromDate,
+      toDate,
+    },
+  });
+
+  return response.data;
+};
+
+export const confirmDoctorAppointment = async (
+  appointmentId: string,
+) => {
+  const response = await axiosClient.post(
+    `/api/doctor/appointments/${appointmentId}/confirm`,
+  );
+
+  return response.data;
+};
+
+export const checkInDoctorAppointment = async (
+  appointmentId: string,
+) => {
+  const response = await axiosClient.post(
+    `/api/doctor/appointments/${appointmentId}/check-in`,
+  );
+
+  return response.data;
+};
+
+export const markDoctorAppointmentNotCheckIn = async (
+  appointmentId: string,
+) => {
+  const response = await axiosClient.post(
+    `/api/doctor/appointments/${appointmentId}/not-checkin`,
+  );
+
+  return response.data;
+};
+
+export const cancelDoctorAppointment = async (
+  appointmentId: string,
+  payload: DoctorCancelAppointmentPayload,
+) => {
+  const response = await axiosClient.post(
+    `/api/doctor/appointments/${appointmentId}/cancel`,
+    payload,
+  );
+
+  return response.data;
+};
+
+export const checkoutDoctorAppointment = async (
+  appointmentId: string,
+  payload: DoctorCheckoutPayload,
+) => {
+  const response = await axiosClient.post(
+    `/api/doctor/appointments/${appointmentId}/checkout`,
+    payload,
+  );
+
   return response.data;
 };
 
