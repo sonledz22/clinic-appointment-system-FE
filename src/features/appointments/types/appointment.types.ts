@@ -1,10 +1,13 @@
 export interface CreateAppointmentPayload {
-  patientId: string;
-  doctorId: string;
-  slotId: string;
+  specialization: string;
+  startTime: string;
+  endTime: string;
   rescheduledFromAppointmentId?: string | null;
   reason?: string;
   bookingSource?: string;
+  patientId?: string;
+  doctorId?: string;
+  slotId?: string;
 }
 
 export interface Appointment {

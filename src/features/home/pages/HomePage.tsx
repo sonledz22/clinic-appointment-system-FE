@@ -329,8 +329,9 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
   const handleSubmit = async () => {
     if (!bookingReady) return;
 
-    if (!currentUser?.patientId) {
-      setQuickBookingError('Không tìm thấy patientId. Vui lòng đăng nhập lại.');
+    const effectivePatientId = currentUser?.patientId ?? currentUser?.userId ?? currentUser?.id;
+    if (!effectivePatientId) {
+      setQuickBookingError('Không tìm thấy tài khoản. Vui lòng đăng nhập lại.');
       return;
     }
 
@@ -341,7 +342,10 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
     try {
       const reason = bookingReason.trim();
       await createAppointment({
-        patientId: currentUser.patientId,
+        specialization: selectedSpecialty || selectedQuickDoctor?.specialty || 'General',
+        startTime: selectedSlot?.startTime || new Date().toISOString(),
+        endTime: selectedSlot?.endTime || new Date(Date.now() + 1800000).toISOString(),
+        patientId: effectivePatientId,
         doctorId: selectedQuickDoctorId,
         slotId: selectedSlotId,
         rescheduledFromAppointmentId: null,
@@ -538,7 +542,7 @@ const HomePage = ({}: Readonly<HomePageProps>) => {
             {bookingSuccess && selectedQuickDoctor && selectedSlot ? (
               <div className="success-message quick-booking-card__success">
                 <i className="pi pi-check-circle" aria-hidden="true" />
-                Đã gửi yêu cầu đặt lịch với {selectedQuickDoctor.name} vào {formatSlotLabel(selectedSlot)}. Lịch đang chờ bác sĩ xác nhận.
+                Đặt lịch khám thành công với {selectedQuickDoctor.name} vào {formatSlotLabel(selectedSlot)}. Lịch hẹn đã được xác nhận.
               </div>
             ) : null}
             <Button

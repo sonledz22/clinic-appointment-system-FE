@@ -9,6 +9,7 @@ import { Tag } from 'primereact/tag';
 import AppLayout from '@/components/layout/AppLayout';
 import PageHeader from '@/components/ui/PageHeader';
 import { useAuthStore } from '@/stores/auth.store';
+import { getMyAppointments } from '@/features/appointments/services/appointmentApi';
 
 interface PatientProfile {
   fullName: string;
@@ -30,8 +31,33 @@ interface AppointmentHistory {
   patientPhone: string;
   patientSymptoms: string;
   status: string;
+  cancelReason?: string;
   createdAt: string;
 }
+
+const renderStatusTag = (status?: string) => {
+  switch (status?.toUpperCase()) {
+    case 'CHECKIN_SUCCESS':
+      return <Tag value="Đang khám" severity="info" className="rounded bg-cyan-500 border-none text-white" />;
+    case 'CHECKOUT_SUCCESS':
+    case 'COMPLETED':
+      return <Tag value="Đã khám xong" severity="success" className="rounded bg-slate-600 border-none text-white" />;
+    case 'NOT_CHECKIN':
+      return <Tag value="Bệnh nhân không đến" severity="danger" className="rounded" />;
+    case 'CANCELLED_BY_DOCTOR':
+      return <Tag value="Bác sĩ đã hủy" severity="danger" className="rounded" />;
+    case 'CANCELLED':
+      return <Tag value="Đã hủy" severity="danger" className="rounded" />;
+    case 'CONFIRMED':
+    case 'BOOKED':
+    case 'PENDING_DOCTOR_CONFIRMATION':
+    case 'PENDING':
+    case 'PENDING_PAYMENT':
+    default:
+      return <Tag value="Đã xác nhận" severity="success" className="rounded" />;
+  }
+};
+
 
 const ProfilePage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -60,15 +86,50 @@ const ProfilePage: React.FC = () => {
   // History state
   const [appointments, setAppointments] = useState<AppointmentHistory[]>([]);
 
-  const loadAppointments = () => {
-    const savedAppts = localStorage.getItem('patient_appointments');
+  const appointmentsKey = `patient_appointments_${userInfo.id}`;
+
+  const loadAppointments = async () => {
+    let localList: AppointmentHistory[] = [];
+    const savedAppts = localStorage.getItem(appointmentsKey);
     if (savedAppts) {
       try {
-        setAppointments(JSON.parse(savedAppts));
+        localList = JSON.parse(savedAppts);
       } catch (e) {
         console.error('Error parsing appointments', e);
       }
     }
+
+    try {
+      const remoteList = await getMyAppointments();
+      if (Array.isArray(remoteList)) {
+        const localMap = new Map(localList.map((item) => [item.id || (item as any).appointmentId, item]));
+
+        const mergedList: AppointmentHistory[] = remoteList.map((remote) => {
+          const localMatch = localMap.get(remote.id);
+          return {
+            id: remote.id,
+            doctorName: localMatch?.doctorName || 'Bác sĩ chuyên khoa',
+            specialty: localMatch?.specialty || 'Phòng khám đa khoa',
+            startTime: remote.startTime || localMatch?.startTime || '',
+            endTime: remote.endTime || localMatch?.endTime || '',
+            patientName: localMatch?.patientName || userInfo.name || 'Bệnh nhân',
+            patientPhone: localMatch?.patientPhone || '',
+            patientSymptoms: remote.reason || localMatch?.patientSymptoms || '',
+            status: remote.status || localMatch?.status || 'CONFIRMED',
+            cancelReason: remote.cancelReason || (localMatch as any)?.cancelReason,
+            createdAt: remote.createdAt || localMatch?.createdAt || new Date().toISOString(),
+          };
+        });
+
+        setAppointments(mergedList);
+        localStorage.setItem(appointmentsKey, JSON.stringify(mergedList));
+        return;
+      }
+    } catch (e) {
+      console.warn('Backend appointments fetch unavailable, using local storage cache', e);
+    }
+
+    setAppointments(localList);
   };
 
   // Load profile and history from localStorage
@@ -330,15 +391,7 @@ const ProfilePage: React.FC = () => {
                     {/* Appointment details */}
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        {appt.status === 'CANCELLED_BY_DOCTOR' ? (
-                          <Tag value="Bác sĩ đã hủy" severity="danger" className="rounded" />
-                        ) : appt.status === 'CANCELLED' ? (
-                          <Tag value="Đã hủy" severity="danger" className="rounded" />
-                        ) : appt.status === 'CONFIRMED' ? (
-                          <Tag value="Đã xác nhận" severity="success" className="rounded" />
-                        ) : (
-                          <Tag value="Chờ bác sĩ xác nhận" severity="warning" className="rounded" />
-                        )}
+                        {renderStatusTag(appt.status)}
                         <span className="text-xs text-gray-400">Đặt lúc: {new Date(appt.createdAt).toLocaleString('vi-VN')}</span>
                       </div>
                       <h4 className="text-lg font-bold text-gray-900 m-0">Bác sĩ: {appt.doctorName}</h4>
